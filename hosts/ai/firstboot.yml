@@ -1,0 +1,21 @@
+---
+# ai firstboot — run ONCE on a freshly-burned SD card.
+# See hosts/tailgate/firstboot.yml for full docs (same flow).
+#
+# Usage:
+#   cd hosts/ai
+#   ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP-of-fresh-host>
+
+- name: First-boot bootstrap of ai
+  hosts: ai_hosts
+  become: true
+  vars_files:
+    - secrets/vault.yml
+  vars:
+    ansible_user: "{{ firstboot_default_user }}"
+    ansible_password: "{{ firstboot_default_password }}"
+    ansible_become_password: "{{ firstboot_default_password }}"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_ssh_extra_args: "-o PreferredAuthentications=password -o PubkeyAuthentication=no"
+  roles:
+    - firstboot

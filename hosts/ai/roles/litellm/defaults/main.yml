@@ -1,0 +1,8 @@
+---
+# litellm role defaults.
+# `litellm` here is the APP (the LiteLLM proxy), not a host name. The host is
+# `ai`; this role deploys the app to /opt/litellm on it.
+
+# Where the stack lives on the host.
+litellm_deploy_path: /opt/litellm
+litellm_certs_path: "{{ litellm_deploy_path }}/certs"

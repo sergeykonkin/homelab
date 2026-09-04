@@ -1,0 +1,16 @@
+---
+# tailscale role defaults — subnet router config.
+# Advertises the home VLANs to the tailnet:
+#   10.4.0.0/24 = management, 10.4.1.0/24 = trusted, 10.4.4.0/24 = isolated
+
+tailscale_advertise_routes:
+  - 10.4.0.0/24
+  - 10.4.1.0/24
+  - 10.4.4.0/24
+
+tailscale_exit_node: false
+tailscale_auto_update: true
+
+# Reusable auth key — comes from the host vault (secrets/vault.yml).
+# Mint one at https://login.tailscale.com/settings/keys (reusable or long-lived).
+tailscale_authkey: "{{ vault_tailscale_authkey }}"

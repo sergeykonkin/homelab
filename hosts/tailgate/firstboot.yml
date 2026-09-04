@@ -1,0 +1,33 @@
+---
+# tailgate firstboot — run ONCE on a freshly-burned SD card.
+#
+# Connects with the default NanoPi image credential (pi:pi), bootstraps the
+# host (passwords, key, hostname, journald, apt, sshd hardening), reboots.
+# Logs in as pi and becomes root via sudo (password: pi), since the fresh image
+# doesn't allow direct root SSH.
+#
+# Usage:
+#   cd hosts/tailgate
+#   ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP-of-fresh-host>
+#
+# -e ansible_host overrides the steady-state DNS name in inventory.ini, because
+# a fresh host doesn't answer tailgate.home.arpa yet (no hostname, no DNS lease).
+
+- name: First-boot bootstrap of tailgate
+  hosts: tailgate_hosts
+  become: true
+  vars_files:
+    - secrets/vault.yml
+  # Default image credential. Not a secret — it's the public NanoPi default.
+  # Override ansible_host on the CLI to reach a fresh DHCP host.
+  # pi user connects (password: pi), then become: true escalates to root via
+  # sudo (same password) — direct root SSH isn't permitted on the fresh image.
+  vars:
+    ansible_user: "{{ firstboot_default_user }}"
+    ansible_password: "{{ firstboot_default_password }}"
+    ansible_become_password: "{{ firstboot_default_password }}"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    # Force password auth for this run (the key isn't there yet).
+    ansible_ssh_extra_args: "-o PreferredAuthentications=password -o PubkeyAuthentication=no"
+  roles:
+    - firstboot

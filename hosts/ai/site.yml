@@ -1,0 +1,26 @@
+---
+# ai playbook — real setup, re-runnable anytime after firstboot.
+# Installs Docker (with fuse-overlayfs for the NanoPi overlay-root) and deploys
+# the LiteLLM proxy app (serving litellm.home.arpa on :443).
+#
+# Usage:
+#   cd hosts/ai
+#   ansible-playbook site.yml
+#
+# Prereqs:
+#   - firstboot.yml has run (key auth works; hostname/DNS set)
+#   - secrets/vault.yml encrypted with: vault_nebius_api_key,
+#     vault_litellm_master_key, vault_postgres_password, vault_tls_crt, vault_tls_key
+#   - TLS cert + key are both in the vault (kept as a pair); the cert is for
+#     litellm.home.arpa (the app's public endpoint).
+
+- name: Set up ai (Docker + LiteLLM app)
+  hosts: ai_hosts
+  become: true
+  vars_files:
+    - secrets/vault.yml
+  vars:
+    ansible_user: root
+  roles:
+    - docker
+    - litellm

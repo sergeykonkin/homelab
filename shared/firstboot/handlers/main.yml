@@ -1,0 +1,25 @@
+---
+# shared/firstboot handlers
+
+- name: Restart journald
+  ansible.builtin.systemd_service:
+    name: systemd-journald
+    state: restarted
+
+- name: Validate and restart sshd
+  # Validate before restart so a broken sshd_config doesn't take down the only
+  # access path. `sshd -t` exits non-zero on a bad config; `&&` ensures the
+  # restart only runs if validation passes — so a bad config fails the handler
+  # (and the play stops before reboot) rather than silently taking ssh down.
+  #
+  # `sshd -t` refuses to run without /run/sshd, which ssh.service normally
+  # creates via RuntimeDirectory=sshd. On a fresh firstboot — or after apt
+  # upgrade disturbs openssh-server's service state — it may not exist yet, so
+  # `sshd -t` fails with "Missing privilege separation directory" before the
+  # restart ever runs. `install -d` creates it (idempotently) up front; /run is
+  # a tmpfs (cleared each boot), so this is safe. Kept inline here so the
+  # handler is self-contained and doesn't depend on a second handler being
+  # notified (and run) first.
+  ansible.builtin.shell:
+    cmd: install -d -m 0755 -o root -g root /run/sshd && sshd -t && systemctl restart ssh
+  changed_when: true

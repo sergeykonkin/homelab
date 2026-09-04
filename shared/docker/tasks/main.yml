@@ -1,0 +1,89 @@
+---
+# shared/docker — install Docker + compose plugin and configure fuse-overlayfs
+# (the default overlay2 driver won't nest on the NanoPi's overlay-root).
+
+# fuse-overlayfs needs the fuse-overlayfs binary + fuse support in kernel.
+# (Ubuntu 24.04 arm64 NanoPi image has fuse; the binary is in apt.)
+
+- name: Install fuse-overlayfs and supporting packages
+  ansible.builtin.apt:
+    name:
+      - fuse-overlayfs
+      - fuse3
+    state: present
+    update_cache: true
+
+- name: Ensure /etc/docker exists
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure Docker storage driver (fuse-overlayfs)
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {
+        "storage-driver": "{{ docker_storage_driver }}"
+      }
+  notify: Restart docker
+
+- name: Install Docker CE + compose plugin (apt repo)
+  block:
+    - name: Ensure ca-certificates and curl for the repo setup
+      ansible.builtin.apt:
+        name: [ca-certificates, curl]
+        state: present
+
+    - name: Add Docker's official GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+        owner: root
+        group: root
+        force: true
+
+    - name: Add Docker apt repository (deb822)
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        architectures: [arm64]
+        uris: ["https://download.docker.com/linux/ubuntu"]
+        suites: ["{{ ansible_facts['distribution_release'] }}"]
+        components: [stable]
+        signed_by: /etc/apt/keyrings/docker.asc
+        state: present
+        enabled: true
+        # deb822_repository needs the Python `debian` library, which isn't on the
+        # stock NanoPi image. Let the module apt-install python3-debian itself.
+        install_python_debian: true
+
+    - name: Install docker-ce, docker-ce-cli, containerd, compose plugin
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        # Refresh the cache so the just-added docker apt repo is visible to
+        # this install task (deb822_repository does not refresh it for us).
+        update_cache: true
+
+- name: Ensure docker service is enabled and started
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+
+# Flush so the daemon picks up the new storage driver (from daemon.json)
+# before any app role brings a stack up on it.
+- name: Flush handlers (apply daemon.json)
+  ansible.builtin.meta: flush_handlers

@@ -1,0 +1,164 @@
+---
+# shared/firstboot — one-time bootstrap of a freshly-burned NanoPi host.
+# Run via the per-host firstboot.yml, which connects with the default image
+# credential (pi:pi) and becomes root via sudo (password: pi) before this role
+# changes it.
+#
+# Prereqs (set by the host's firstboot.yml / inventory / vault):
+#   base_hostname        — e.g. "tailgate", "ai"
+#   vault_root_pw        — new root password (vault)
+#   vault_pi_pw          — new pi password (vault)
+
+# --- Hostname --------------------------------------------------------------
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ base_hostname }}"
+
+- name: Ensure /etc/hosts has 127.0.1.1 entry for the hostname
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\b'
+    line: "127.0.1.1\t{{ base_hostname }}"
+    state: present
+
+# --- Passwords -------------------------------------------------------------
+# Hash with SHA-512 crypt via the target's openssl (3.x), so no passlib/crypt
+# dependency is needed on the control machine or the target. The hash is
+# generated on the target (where it'll be used) and fed to ansible.builtin.user.
+
+- name: Generate root password hash (on target)
+  ansible.builtin.command:
+    argv: [openssl, passwd, -6, "{{ vault_root_pw }}"]
+  register: firstboot_root_hash
+  changed_when: false
+  no_log: true
+
+- name: Set root password
+  ansible.builtin.user:
+    name: root
+    password: "{{ firstboot_root_hash.stdout }}"
+  no_log: true
+
+- name: Generate pi password hash (on target)
+  ansible.builtin.command:
+    argv: [openssl, passwd, -6, "{{ vault_pi_pw }}"]
+  register: firstboot_pi_hash
+  changed_when: false
+  no_log: true
+
+- name: Set pi password
+  ansible.builtin.user:
+    name: pi
+    password: "{{ firstboot_pi_hash.stdout }}"
+  no_log: true
+
+# We just changed pi's password, but every remaining task in this play still
+# runs `become: true` — and the reboot at the end must sudo too. The play-level
+# ansible_become_password still holds the *old* default (pi), so the next sudo
+# would fail with "Incorrect sudo password". Re-point it at the new password
+# we just set; ansible_become_password is re-resolved from hostvars per task, so
+# this set_fact takes effect for every task below (and the per-host firstboot.yml
+# reboot). Tasks above this point already ran under the old password, which was
+# still valid at the time.
+- name: Switch sudo password to the new pi password for remaining tasks
+  ansible.builtin.set_fact:
+    ansible_become_password: "{{ vault_pi_pw }}"
+  no_log: true
+
+# --- SSH public key for root ----------------------------------------------
+
+- name: Ensure /root/.ssh exists
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Add SSH public key for root
+  ansible.builtin.authorized_key:
+    user: root
+    key: "{{ firstboot_pubkey }}"
+    state: present
+
+# --- apt update + upgrade --------------------------------------------------
+
+- name: Update apt cache and upgrade all packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: true
+
+# --- Base packages ---------------------------------------------------------
+
+- name: Install base packages
+  ansible.builtin.package:
+    name: "{{ firstboot_packages }}"
+    state: present
+
+# --- journald -> volatile RAM (saves SD card) ------------------------------
+
+- name: Configure journald for volatile storage
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald
+
+# --- sshd hardening (key-only auth) ----------------------------------------
+# Done AFTER the key is dropped and AFTER passwords are changed, so we never
+# lock ourselves out: by the time password auth is disabled, the pubkey is in
+# place and the new passwords are set (for console/serial access).
+
+- name: Ensure /etc/ssh/sshd_config.d exists
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Add sshd hardening config (key-only auth)
+  ansible.builtin.template:
+    src: sshd-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-homelab-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Validate and restart sshd
+
+# --- Reboot ----------------------------------------------------------------
+# Flush handlers so sshd validation+restart happens before the reboot.
+- name: Flush handlers (apply sshd/journald changes before reboot)
+  ansible.builtin.meta: flush_handlers
+
+- name: Reboot to complete first boot
+  # The reboot task opens a FRESH ssh connection to run test_command after the
+  # host comes back. By this point the play has: changed pi's password (so the
+  # play-level pi:pi cred is wrong), disabled password auth, and dropped a root
+  # pubkey — so the only working path is key auth as root, exactly what the
+  # steady-state playbook uses (ansible_user: root, ~/.ssh/id_ed25519, which
+  # matches firstboot_pubkey). Override the bootstrap connection vars (set
+  # play-level in firstboot.yml) for this task only:
+  #   ansible_user: root           — become root, the user the key is for
+  #   ansible_password: ""         — drop pi:pi; sshd rejects password auth now
+  #   ansible_ssh_common_args: ""  — stop forcing PreferredAuthentications=
+  #                                 password / PubkeyAuthentication=no
+  #   ansible_ssh_extra_args: -o PreferredAuthentications=publickey
+  #                     -o PubkeyAuthentication=yes -o BatchMode=yes
+  #                                 — explicitly request key auth and BatchMode
+  #                                 (no password prompts) so the client can't
+  #                                 fall back to offering a password; guarantees
+  #                                 the reconnect uses the key we just dropped
+  # ansible_host is left as-is: firstboot is run with -e ansible_host=<DHCP-IP>
+  # and DHCP is a sticky lease, so the box answers on the same IP after reboot.
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    test_command: whoami
+  vars:
+    ansible_user: root
+    ansible_password: ""
+    ansible_ssh_common_args: ""
+    ansible_ssh_extra_args: "-o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o BatchMode=yes"

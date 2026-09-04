@@ -1,0 +1,108 @@
+---
+# tailscale role — install Tailscale, enable IP forwarding, bring the node up
+# as a subnet router advertising the VLAN subnets.
+
+# --- Install Tailscale (official apt repo) --------------------------------
+
+- name: Install Tailscale from the official apt repo
+  block:
+    - name: Add Tailscale GPG key
+      ansible.builtin.get_url:
+        url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+        dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+        mode: "0644"
+        owner: root
+        group: root
+        force: true
+
+    - name: Add Tailscale apt repository (deb822)
+      ansible.builtin.deb822_repository:
+        name: tailscale
+        types: [deb]
+        uris: ["https://pkgs.tailscale.com/stable/ubuntu"]
+        suites: ["noble"]
+        components: [main]
+        signed_by: /usr/share/keyrings/tailscale-archive-keyring.gpg
+        state: present
+        enabled: true
+        # deb822_repository needs the Python `debian` library, which isn't on the
+        # stock NanoPi image. Let the module apt-install python3-debian itself.
+        install_python_debian: true
+
+    - name: Install tailscale
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        # Refresh the cache so the just-added tailscale apt repo is visible to
+        # this install task (deb822_repository does not refresh it for us).
+        update_cache: true
+
+# --- IP forwarding (required for subnet routing) ---------------------------
+
+- name: Enable IPv4 forwarding
+  ansible.builtin.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_file: /etc/sysctl.d/99-tailscale.conf
+    reload: true
+    state: present
+
+- name: Enable IPv6 forwarding
+  ansible.builtin.sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: "1"
+    sysctl_file: /etc/sysctl.d/99-tailscale.conf
+    reload: true
+    state: present
+
+# --- Ensure tailscaled is running -----------------------------------------
+
+- name: Ensure tailscaled is enabled and started
+  ansible.builtin.systemd_service:
+    name: tailscaled
+    state: started
+    enabled: true
+
+# --- Bring the node up as a subnet router ----------------------------------
+# `tailscale up` with --auth-key is idempotent in recent versions: if already
+# up with the same config it's a no-op. We use --reset=false to avoid clobbering
+# unrelated prefs, and pass the advertised routes explicitly.
+# --accept-routes is needed so the node itself honors routes others advertise.
+#
+# The advertised routes must be APPROVED in the Tailscale admin console
+# (one-time, manual) — that approval is what makes them primary. The playbook
+# brings them up; the admin console makes them usable by the tailnet.
+
+- name: Compose advertised routes argument
+  ansible.builtin.set_fact:
+    tailscale_routes_arg: "{{ tailscale_advertise_routes | join(',') }}"
+
+- name: Bring Tailscale up as a subnet router
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - up
+      - --advertise-routes={{ tailscale_routes_arg }}
+      - --auth-key={{ tailscale_authkey }}
+      - --reset=false
+      - --accept-routes
+  register: tailscale_up_result
+  # `tailscale up` prints little on success and varies by version; treat any
+  # non-zero exit as failure, and assume a change unless the output explicitly
+  # says nothing changed. The auth key makes a precise idempotency check hard;
+  # correctness matters more than a green "ok" here.
+  changed_when: true
+  failed_when: tailscale_up_result.rc != 0
+  no_log: true  # auth key is in the command
+
+# --- Auto-update -----------------------------------------------------------
+# Auto-update is a node-level pref, set with `tailscale set --auto-update`.
+
+- name: Enable Tailscale auto-update
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - set
+      - "--auto-update={{ tailscale_auto_update | lower }}"
+  changed_when: false
+  when: tailscale_auto_update | bool
