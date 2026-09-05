@@ -32,8 +32,9 @@ for setup prerequisites; prefer executable configuration when comments disagree.
   instructions and vault examples when changing their interfaces.
 - Write documentation and comments as descriptions of the current state. Omit
   change history and wording such as "now" or "previously" that narrates edits.
-- Always commit completed changes and push directly to `main` in this repo.
-  Do not create feature branches or pull requests.
+- Commit and push changes only when explicitly asked to deliver, ship, submit,
+  or commit and push them. Push directly to `main` in this repo; do not create
+  feature branches or pull requests.
 
 ## Commands and validation
 
