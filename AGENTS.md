@@ -33,8 +33,7 @@ for setup prerequisites; prefer executable configuration when comments disagree.
 - Write documentation and comments as descriptions of the current state. Omit
   change history and wording such as "now" or "previously" that narrates edits.
 - Always commit completed changes and push directly to `main` in this repo.
-  Do not create feature branches or pull requests; committing and pushing are
-  part of completing the task and do not require a separate request.
+  Do not create feature branches or pull requests.
 
 ## Commands and validation
 
