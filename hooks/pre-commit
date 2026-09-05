@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""Require Ansible Vault headers on indexed host secrets."""
+
+import subprocess
+import sys
+
+
+def git(*args):
+    return subprocess.check_output(["git", *args], stderr=subprocess.PIPE)
+
+
+def main():
+    paths = git("ls-files", "--cached", "-z", "--", "hosts/*/secrets/*")
+    rejected = []
+    for raw_path in paths.split(b"\0"):
+        if not raw_path or raw_path.endswith(b".example"):
+            continue
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        if not git("show", f":{path}").startswith(b"$ANSIBLE_VAULT;"):
+            rejected.append(path)
+
+    if rejected:
+        print("Commit blocked: staged secrets must be Ansible Vault encrypted:", file=sys.stderr)
+        for path in rejected:
+            print(f"  {path!r}", file=sys.stderr)
+        print(
+            "Encrypt these files with ansible-vault from their host directory, "
+            "then stage the encrypted files again. Plaintext templates must end in .example.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except subprocess.CalledProcessError:
+        print("Commit blocked: unable to inspect staged secrets.", file=sys.stderr)
+        sys.exit(1)

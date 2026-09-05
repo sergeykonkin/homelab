@@ -38,7 +38,8 @@ One ansible-vault password decrypts both tracked
 `hosts/<name>/secrets/vault.yml` files. Keep that password and your SSH private
 key outside the repo.
 
-1. `git clone` this repo.
+1. `git clone` this repo, enter its directory, and run `make init` to configure
+   Git to use the tracked `hooks/` directory.
 2. Put your vault password (from your password manager) into `.vault-pass`:
    ```bash
    echo -n 'your-vault-password' > .vault-pass   # no trailing newline
@@ -53,6 +54,13 @@ Playbooks decrypt their host's vault automatically. Reuse those
 vaults when reprovisioning; use `ansible-vault edit secrets/vault.yml` from the
 host directory to update values. Plaintext `vault.yml` files are **not ignored**:
 verify the `$ANSIBLE_VAULT;` header before staging any vault.
+
+The pre-commit hook checks the Git index for every file under
+`hosts/*/secrets/`, except plaintext `.example` templates. It blocks commits if
+any of these files lacks the `$ANSIBLE_VAULT;` header, without printing their
+contents. Encrypt files from their host directory with `ansible-vault encrypt`,
+then stage the encrypted files again. The hook checks the header only; it does
+not decrypt or authenticate vault contents.
 
 ## Setting up a host
 
@@ -81,6 +89,8 @@ See each host's `README.md` for the full setup walkthrough.
 
 ## Tooling on the control machine
 
+- `make` and Python 3 — `make init` configures the repository's pre-commit hook,
+  which runs with `python3`.
 - `ansible` (ansible-core ≥ 2.21) — `brew install ansible`. `firstboot.yml`
   connects to a fresh host with the default image password over SSH; ansible-core
   ≥ 2.19 handles password auth natively (no extra tooling required).

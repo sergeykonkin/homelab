@@ -39,6 +39,10 @@ Use the full `ansible` distribution with ansible-core >= 2.21
 (`brew install ansible`); `ansible-lint` is optional. There is no CI, test suite,
 dependency manifest, or top-level build command.
 
+Run `make init` from the repo root to configure Git's local `core.hooksPath` as
+`hooks`. The Python 3 pre-commit hook requires an Ansible Vault header on indexed
+files under `hosts/*/secrets/`, excluding `.example` templates.
+
 ```sh
 # Run from each affected host directory; shared/firstboot changes affect both.
 cd hosts/ai                    # or hosts/tailgate
