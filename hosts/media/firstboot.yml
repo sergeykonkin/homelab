@@ -1,0 +1,17 @@
+---
+# One-time bootstrap of the Ubuntu installation on eMMC.
+# Run from hosts/media with: ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>
+
+- name: First-boot bootstrap of media
+  hosts: media_hosts
+  become: true
+  vars_files:
+    - secrets/vault.yml
+  vars:
+    ansible_user: "{{ firstboot_default_user }}"
+    ansible_password: "{{ firstboot_default_password }}"
+    ansible_become_password: "{{ firstboot_default_password }}"
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_ssh_extra_args: "-o PreferredAuthentications=password -o PubkeyAuthentication=no"
+  roles:
+    - firstboot

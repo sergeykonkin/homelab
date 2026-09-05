@@ -2,7 +2,7 @@
 
 Single source of truth for the hosts on my home network. Each host lives in its
 own folder under `hosts/<name>/` and is provisioned with **Ansible**, with manual
-prereqs (burning the SD image, etc.) documented in that host's `README.md`.
+prereqs (installing the OS on SD or eMMC) documented in that host's `README.md`.
 Host secrets are encrypted at rest with **ansible-vault**. Reprovisioning needs
 a fresh `git clone`, the vault password, and the SSH private key matching the
 public key configured in `shared/firstboot/vars/main.yml`.
@@ -13,6 +13,7 @@ public key configured in `shared/firstboot/vars/main.yml`.
 |------|----------|------|--------|
 | `tailgate.home.arpa` | FriendlyElec NanoPi Zero2 (arm64) | Tailscale subnet router (`10.4.0.0/24`, `10.4.1.0/24`, `10.4.4.0/24`) | [`hosts/tailgate/`](hosts/tailgate/) |
 | `ai.home.arpa` | FriendlyElec NanoPi Zero2 (arm64) | LiteLLM proxy app (serving `litellm.home.arpa` on :443); `open-webui` planned | [`hosts/ai/`](hosts/ai/) |
+| `media.home.arpa` | FriendlyElec NanoPi R6S (arm64, 64 GB eMMC) | Docker host | [`hosts/media/`](hosts/media/) |
 
 ## Layout
 
@@ -34,7 +35,7 @@ by name, not path).
 
 ## Bootstrap (one-time, on a new machine)
 
-One ansible-vault password decrypts both tracked
+One ansible-vault password decrypts all tracked
 `hosts/<name>/secrets/vault.yml` files. Keep that password and your SSH private
 key outside the repo.
 
@@ -66,8 +67,8 @@ not decrypt or authenticate vault contents.
 
 Each host has **two playbooks**:
 
-- **`firstboot.yml`** — run *once* on a freshly-burned SD card. Connects with the
-  default `pi:pi` image credential, escalates with sudo, sets strong passwords,
+- **`firstboot.yml`** — run *once* on a fresh OS installation on SD or eMMC.
+  Connects with the default `pi:pi` image credential, escalates with sudo, sets strong passwords,
   installs the configured root SSH public key, sets the hostname, moves journald
   to RAM, runs apt upgrade, hardens sshd to key-only,
   and reboots. See the host's README for the exact manual prereqs (burn image,
@@ -78,8 +79,8 @@ Each host has **two playbooks**:
   ```
 
 - **`site.yml`** — run *anytime after firstboot* to install the host's actual
-  purpose (Tailscale on tailgate; Docker + LiteLLM app on ai). Re-runnable; converges
-  the host to the desired state.
+  purpose (Tailscale on tailgate; Docker + LiteLLM app on ai; Docker on media).
+  Re-runnable; converges the host to the desired state.
   ```bash
   cd hosts/<name>
   ansible-playbook site.yml

@@ -1,7 +1,8 @@
 # Repository guide
 
-This repo is the Ansible source of truth for two FriendlyElec NanoPi Zero2
-hosts (Ubuntu 24.04, arm64). Read the root README and the affected host's README
+This repo is the Ansible source of truth for three FriendlyElec NanoPi hosts:
+two Zero2 boards and one R6S with 64 GB eMMC (Ubuntu 24.04, arm64).
+Read the root README and the affected host's README
 for setup prerequisites; prefer executable configuration when comments disagree.
 `CLAUDE.md` is a relative symlink to this file; keep one source of instructions.
 
@@ -11,6 +12,7 @@ for setup prerequisites; prefer executable configuration when comments disagree.
 | --- | --- |
 | `hosts/tailgate/` | `tailgate.home.arpa`: Tailscale subnet router only |
 | `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL, model updater |
+| `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation, firstboot and Docker only |
 | `shared/firstboot/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, reboot |
 | `shared/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
 
@@ -47,8 +49,8 @@ Run `make init` from the repo root to configure Git's local `core.hooksPath` as
 files under `hosts/*/secrets/`, excluding `.example` templates.
 
 ```sh
-# Run from each affected host directory; shared/firstboot changes affect both.
-cd hosts/ai                    # or hosts/tailgate
+# Run from each affected host directory; shared/firstboot changes affect all hosts.
+cd hosts/ai                    # or hosts/tailgate or hosts/media
 ansible-playbook --syntax-check firstboot.yml
 ansible-playbook --syntax-check site.yml
 ansible-lint firstboot.yml site.yml  # if installed
@@ -70,7 +72,7 @@ Finish with `git diff --check` and review the changed files.
 
 ## Secrets
 
-- `.vault-pass` is ignored and must never be committed or printed. Both
+- `.vault-pass` is ignored and must never be committed or printed. All
   `hosts/*/secrets/vault.yml` files **are tracked** and must start with
   `$ANSIBLE_VAULT;`. Plaintext vaults are **not** protected by `.gitignore`.
   Check encryption before staging any vault.
@@ -78,7 +80,7 @@ Finish with `git diff --check` and review the changed files.
   secrets. The `.example` files define the schema with placeholders; never copy
   one over an existing vault as a routine setup step or expose decrypted values
   in logs, diffs, or replies.
-- Both vaults contain `vault_root_pw` and `vault_pi_pw`. Tailgate also has
+- All vaults contain `vault_root_pw` and `vault_pi_pw`. Tailgate also has
   `vault_tailscale_authkey`; ai has `vault_nebius_api_key`,
   `vault_litellm_master_key`, `vault_postgres_password`, `vault_tls_crt`, and
   `vault_tls_key`. Keep the TLS certificate/key pair together during rotation.
@@ -105,6 +107,10 @@ Finish with `git diff --check` and review the changed files.
 
 ## Host-specific behavior
 
+- **Media:** NanoPi R6S with 64 GB eMMC. Install Ubuntu from an SD eFlasher
+  image onto eMMC and remove the SD card before firstboot. `site.yml` runs only
+  the shared `docker` role with its `fuse-overlayfs` default; no applications
+  are configured. Its vault contains only the root and pi passwords.
 - **Tailgate:** enables IPv4/IPv6 forwarding and advertises `10.4.0.0/24`
   (management), `10.4.1.0/24` (trusted), and `10.4.4.0/24` (isolated). Route approval
   in the Tailscale admin console is a manual prerequisite for usable routing.

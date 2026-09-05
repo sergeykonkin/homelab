@@ -1,0 +1,11 @@
+---
+# Repeatable Docker setup after firstboot.
+# Run from hosts/media with: ansible-playbook site.yml
+
+- name: Set up media (Docker)
+  hosts: media_hosts
+  become: true
+  vars:
+    ansible_user: root
+  roles:
+    - docker
