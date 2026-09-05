@@ -53,14 +53,9 @@
     password: "{{ firstboot_pi_hash.stdout }}"
   no_log: true
 
-# We just changed pi's password, but every remaining task in this play still
-# runs `become: true` — and the reboot at the end must sudo too. The play-level
-# ansible_become_password still holds the *old* default (pi), so the next sudo
-# would fail with "Incorrect sudo password". Re-point it at the new password
-# we just set; ansible_become_password is re-resolved from hostvars per task, so
-# this set_fact takes effect for every task below (and the per-host firstboot.yml
-# reboot). Tasks above this point already ran under the old password, which was
-# still valid at the time.
+# Remaining tasks connected as pi need its new sudo password. Replace the
+# play's bootstrap become password; the reboot task below switches to root
+# key auth and does not depend on pi's sudo credentials.
 - name: Switch sudo password to the new pi password for remaining tasks
   ansible.builtin.set_fact:
     ansible_become_password: "{{ vault_pi_pw }}"
@@ -135,25 +130,14 @@
   ansible.builtin.meta: flush_handlers
 
 - name: Reboot to complete first boot
-  # The reboot task opens a FRESH ssh connection to run test_command after the
-  # host comes back. By this point the play has: changed pi's password (so the
-  # play-level pi:pi cred is wrong), disabled password auth, and dropped a root
-  # pubkey — so the only working path is key auth as root, exactly what the
-  # steady-state playbook uses (ansible_user: root, ~/.ssh/id_ed25519, which
-  # matches firstboot_pubkey). Override the bootstrap connection vars (set
-  # play-level in firstboot.yml) for this task only:
-  #   ansible_user: root           — become root, the user the key is for
-  #   ansible_password: ""         — drop pi:pi; sshd rejects password auth now
-  #   ansible_ssh_common_args: ""  — stop forcing PreferredAuthentications=
-  #                                 password / PubkeyAuthentication=no
-  #   ansible_ssh_extra_args: -o PreferredAuthentications=publickey
-  #                     -o PubkeyAuthentication=yes -o BatchMode=yes
-  #                                 — explicitly request key auth and BatchMode
-  #                                 (no password prompts) so the client can't
-  #                                 fall back to offering a password; guarantees
-  #                                 the reconnect uses the key we just dropped
-  # ansible_host is left as-is: firstboot is run with -e ansible_host=<DHCP-IP>
-  # and DHCP is a sticky lease, so the box answers on the same IP after reboot.
+  # Password SSH is disabled. Use root public-key auth for this task and
+  # its fresh connection after reboot, as in the steady-state playbook.
+  # The control machine must offer the private key matching firstboot_pubkey;
+  # no identity-file path is pinned here. Clear the bootstrap password and
+  # common args (host-key options); replace the extra args that forced password
+  # auth with public-key-only, noninteractive options. Per-host ansible.cfg
+  # disables host-key checking.
+  # Keep the CLI's ansible_host override; the DHCP IP must survive the reboot.
   ansible.builtin.reboot:
     reboot_timeout: 300
     test_command: whoami

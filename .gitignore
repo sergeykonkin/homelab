@@ -1,5 +1,5 @@
-# Vault password — the one secret that must NOT be committed.
-# Its content lives in your password manager; this file is a placeholder.
+# Local vault password file — never commit it.
+# Store the password separately in your password manager.
 .vault-pass
 
 # Python
@@ -11,8 +11,9 @@ __pycache__/
 
 # NOTE: hosts/<name>/secrets/vault.yml IS committed — but ONLY in its
 # ansible-vault-encrypted form (file starts with `$ANSIBLE_VAULT;...`).
-# Before ANY `git add` of a vault.yml, ensure it is encrypted:
-#     ansible-vault encrypt hosts/<name>/secrets/vault.yml
+# Plaintext vault.yml is NOT ignored. Before staging, verify the vault header.
+# If encryption is needed, run from hosts/<name>/ to load its ansible.cfg:
+#     ansible-vault encrypt secrets/vault.yml
 # A plaintext vault.yml committed by accident would leak every secret.
-# The committed *.vault.yml.example files are plaintext templates with
+# The committed hosts/<name>/secrets/vault.yml.example files are templates with
 # placeholder values and are safe.

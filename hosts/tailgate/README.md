@@ -2,8 +2,8 @@
 
 Tailscale subnet router on a FriendlyElec **NanoPi Zero2** (arm64, Ubuntu 24.04).
 Advertises the home VLANs `10.4.0.0/24` (management), `10.4.1.0/24` (trusted),
-and `10.4.4.0/24` (isolated) to the `batareeed@` tailnet. Nothing else runs on
-this host — no Docker, no cron, no custom services.
+and `10.4.4.0/24` (isolated) to the `batareeed@` tailnet. This repo deploys no
+other application, Docker stack, or cron job on this host.
 
 ## Manual prerequisites (do these by hand)
 
@@ -18,14 +18,18 @@ this host — no Docker, no cron, no custom services.
    ```bash
    nmap -sn 10.4.0.0/24   # or check the gateway's DHCP leases
    ```
-3. **Prepare the vault** (one-time, per the repo root README):
+3. **Prepare the control machine** using the [root README](../../README.md#bootstrap-one-time-on-a-new-machine)
+   (vault password and matching SSH private key). Reuse the committed encrypted
+   vault; update it only if needed:
    ```bash
    cd hosts/tailgate
-   cp secrets/vault.yml.example secrets/vault.yml
-   # edit secrets/vault.yml: set vault_root_pw, vault_pi_pw, vault_tailscale_authkey
-   # mint the tailscale auth key at https://login.tailscale.com/settings/keys
-   ansible-vault encrypt secrets/vault.yml
+   ansible-vault edit secrets/vault.yml
    ```
+
+   If the vault is missing, use `ansible-vault create secrets/vault.yml` instead
+   and fill in the schema from `secrets/vault.yml.example` in the editor. It needs
+   `vault_root_pw`, `vault_pi_pw`, and `vault_tailscale_authkey`; obtain the latter
+   from [Tailscale keys](https://login.tailscale.com/settings/keys).
 
 ## First boot (run once)
 
@@ -34,10 +38,12 @@ cd hosts/tailgate
 ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>
 ```
 
-This connects with the default image credential (`root`:`pi`), sets strong
-passwords (vault), drops your SSH key for root, installs `nano`+`curl`, sets
-the hostname to `tailgate`, moves journald to RAM, runs `apt upgrade`, hardens
-sshd to **key-only auth**, and reboots.
+This connects with the default image credential (`pi`:`pi`), escalates with sudo,
+sets strong passwords (vault), installs the configured SSH key for root, adds
+`nano`+`curl`, sets the hostname to `tailgate`, moves journald to RAM, runs
+`apt upgrade`, hardens
+sshd to **key-only auth**, and reboots. The reboot check reconnects as root using
+the SSH key.
 
 ## Real setup (after firstboot, re-runnable)
 
@@ -50,7 +56,10 @@ ansible-playbook site.yml
 
 This installs Tailscale, enables IP forwarding, and runs
 `tailscale up --advertise-routes=10.4.0.0/24,10.4.1.0/24,10.4.4.0/24 --auth-key=…`
-with auto-update enabled.
+with `--reset=false`, `--accept-routes`, and auto-update enabled. The `tailscale up`
+task always reports changed. Setting `tailscale_auto_update: false` skips the
+enable task; it does not disable an already-enabled preference. The
+`tailscale_exit_node` default is unused by the tasks.
 
 ### One-time, in the Tailscale admin console
 

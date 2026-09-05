@@ -6,6 +6,6 @@
 # fuse-overlayfs.
 docker_storage_driver: fuse-overlayfs
 
-# NOTE: no shared docker network is created yet. When a second app joins the
+# No shared external Docker network is created. When a second app joins the
 # host (e.g. open-webui), add a shared external network here and create it
 # idempotently in tasks/main.yml — and update the app compose files to use it.

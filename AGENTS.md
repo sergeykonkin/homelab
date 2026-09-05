@@ -1,0 +1,126 @@
+# Repository guide
+
+This repo is the Ansible source of truth for two FriendlyElec NanoPi Zero2
+hosts (Ubuntu 24.04, arm64). Read the root README and the affected host's README
+for setup prerequisites; prefer executable configuration when comments disagree.
+`CLAUDE.md` is a relative symlink to this file; keep one source of instructions.
+
+## Layout and conventions
+
+| Path | Responsibility |
+| --- | --- |
+| `hosts/tailgate/` | `tailgate.home.arpa`: Tailscale subnet router only |
+| `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL, model updater |
+| `shared/firstboot/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, reboot |
+| `shared/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
+
+- Each host is an independent Ansible project: `ansible.cfg`, `inventory.ini`,
+  `firstboot.yml`, `site.yml`, local `roles/`, and `secrets/`. There is no root
+  inventory or root playbook. Run Ansible **inside `hosts/<name>/`** so its config
+  resolves `../../shared:./roles` and `../../.vault-pass` correctly.
+- Keep new roles local until a second host needs them, then move them to
+  `shared/`; playbooks reference role names. For a new host, follow the existing
+  project layout and update the root host table and host README.
+- Inventory groups use `<name>_hosts` to avoid host/group name collisions.
+  Steady-state access is root over SSH keys; Python is `/usr/bin/python3`.
+- Follow existing YAML style: two-space indentation, named tasks, fully qualified
+  module names, quoted file modes, role-prefixed variables, and `vault_` secrets.
+  Put tunables in role defaults; existing firstboot settings/key live in
+  `shared/firstboot/vars/main.yml` (higher precedence than defaults).
+- Keep repeatable setup convergent, use handlers for service configuration, and
+  give command/shell tasks deliberate change/failure reporting. Update README
+  instructions and vault examples when changing their interfaces.
+- Write documentation and comments as descriptions of the current state. Omit
+  change history and wording such as "now" or "previously" that narrates edits.
+
+## Commands and validation
+
+Use the full `ansible` distribution with ansible-core >= 2.21
+(`brew install ansible`); `ansible-lint` is optional. There is no CI, test suite,
+dependency manifest, or top-level build command.
+
+```sh
+# Run from each affected host directory; shared/firstboot changes affect both.
+cd hosts/ai                    # or hosts/tailgate
+ansible-playbook --syntax-check firstboot.yml
+ansible-playbook --syntax-check site.yml
+ansible-lint firstboot.yml site.yml  # if installed
+
+# Live provisioning, when deployment is part of the task:
+ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>  # fresh image only
+ansible-playbook site.yml                              # after firstboot
+```
+
+Syntax checks use the configured vault password without contacting the hosts.
+They do not verify runtime behavior. `--check` is not a complete deployment
+simulation: command tasks, password-hash results, and generated files depend on
+real execution. Do not run live provisioning merely to validate repository edits.
+For updater edits, use `bash -n hosts/ai/roles/litellm/files/entrypoint.sh` and
+Python syntax validation from the repo root; exercise model parsing/config/hash
+behavior with fixtures and a temporary `CONFIG_DIR`, avoiding live API calls.
+The shell script requires Bash and GNU `date` inside its Linux container.
+Finish with `git diff --check` and review the changed files.
+
+## Secrets
+
+- `.vault-pass` is ignored and must never be committed or printed. Both
+  `hosts/*/secrets/vault.yml` files **are tracked** and must start with
+  `$ANSIBLE_VAULT;`. Plaintext vaults are **not** protected by `.gitignore`.
+  Check encryption before staging any vault.
+- Use `ansible-vault edit secrets/vault.yml` from the host directory for existing
+  secrets. The `.example` files define the schema with placeholders; never copy
+  one over an existing vault as a routine setup step or expose decrypted values
+  in logs, diffs, or replies.
+- Both vaults contain `vault_root_pw` and `vault_pi_pw`. Tailgate also has
+  `vault_tailscale_authkey`; ai has `vault_nebius_api_key`,
+  `vault_litellm_master_key`, `vault_postgres_password`, `vault_tls_crt`, and
+  `vault_tls_key`. Keep the TLS certificate/key pair together during rotation.
+- Preserve `no_log: true` on secret-bearing tasks and mode `0600` on the deployed
+  `.env` and TLS private key. Keep generated credentials and config out of Git.
+
+## Bootstrap and Docker invariants
+
+- Firstboot connects as **`pi:pi`**, becomes root with sudo, changes both passwords,
+  and switches the remaining sudo tasks to the new pi password.
+- Install the configured root public key before disabling password SSH. Preserve
+  the `00-homelab-hardening.conf` drop-in, `/run/sshd` creation plus `sshd -t`
+  before restarting SSH, and handler flush before reboot. Reboot reconnects as
+  root using public-key auth at the same overridden DHCP IP. Ensure the control
+  machine has the private key matching `firstboot_pubkey` before provisioning.
+- Firstboot changes access credentials, upgrades packages, and reboots; it is
+  for fresh images. `site.yml` is the repeatable setup path. Current per-host
+  configs disable SSH host-key checking.
+- NanoPi's root filesystem is overlayfs: Docker needs **fuse-overlayfs**, since
+  `overlay2` cannot nest on it. Flush the Docker restart handler before app roles.
+  Docker and Tailscale apt URLs derive distribution/release from gathered facts;
+  Docker's repository architecture is explicitly arm64. Preserve deb822 Python
+  dependency installation and the apt-cache refresh after adding repositories.
+
+## Host-specific behavior
+
+- **Tailgate:** enables IPv4/IPv6 forwarding and advertises `10.4.0.0/24`
+  (management), `10.4.1.0/24` (trusted), and `10.4.4.0/24` (isolated). Route approval
+  in the Tailscale admin console is a manual prerequisite for usable routing.
+  It accepts routes and enables auto-update. `tailscale_exit_node` is
+  unused; setting `tailscale_auto_update: false` skips enabling it rather than
+  actively disabling it. `tailscale up` always reports changed.
+- **AI:** `site.yml` runs `docker` then `litellm`, deploying `/opt/litellm` and
+  invoking `docker compose up -d --build`. `litellm.home.arpa` is the app's TLS
+  alias, distinct from the managed host `ai.home.arpa`. TLS is terminated by
+  LiteLLM on `443:4000`; clients need the mkcert CA trust described in the README.
+  Renewal/trust-location documentation remains a TODO.
+- The Compose template defines LiteLLM (`main-stable`), PostgreSQL 16, and a
+  Python 3.12 updater image. Preserve persistent volumes `litellm_postgres_data`
+  and `litellm_config`, dependency health checks, and LiteLLM's 300-second cold
+  start allowance. The cert bind mount hardcodes `/opt/litellm/certs`; changing
+  role deployment-path defaults alone does not relocate the entire stack.
+- `update_config.py` uses only the Python standard library. It fetches Nebius
+  `models?verbose=1`, filters `text->text`, writes model names/provider IDs/pricing
+  plus `drop_params: true`, and uses SHA-256 to skip unchanged writes.
+  `config.yaml` and its hash are generated in the shared volume, not deployed
+  from Git. `entrypoint.sh` creates the directory, updates at startup without
+  restarting LiteLLM, then runs daily at 04:20 in the container's timezone and
+  restarts `litellm` when an existing hash changes. Preserve this startup ordering.
+- The updater's Docker socket mount is marked `:ro` and permits Docker
+  API mutations (including its restart command); treat it as privileged access.
+  `open-webui` and a shared external Docker network are planned, not implemented.

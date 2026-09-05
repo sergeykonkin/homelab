@@ -8,7 +8,9 @@ tailscale_advertise_routes:
   - 10.4.1.0/24
   - 10.4.4.0/24
 
+# Unused by tasks (no --advertise-exit-node argument).
 tailscale_exit_node: false
+# False skips enabling auto-update; it does not actively disable it.
 tailscale_auto_update: true
 
 # Reusable auth key — comes from the host vault (secrets/vault.yml).

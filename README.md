@@ -3,8 +3,9 @@
 Single source of truth for the hosts on my home network. Each host lives in its
 own folder under `hosts/<name>/` and is provisioned with **Ansible**, with manual
 prereqs (burning the SD image, etc.) documented in that host's `README.md`.
-Secrets are encrypted at rest with **ansible-vault**, so a fresh `git clone` plus
-one password can re-setup any host.
+Host secrets are encrypted at rest with **ansible-vault**. Reprovisioning needs
+a fresh `git clone`, the vault password, and the SSH private key matching the
+public key configured in `shared/firstboot/vars/main.yml`.
 
 ## Hosts
 
@@ -33,9 +34,9 @@ by name, not path).
 
 ## Bootstrap (one-time, on a new machine)
 
-There is exactly **one secret not in this repo**: the ansible-vault password.
-Everything else is encrypted in `hosts/<name>/secrets/vault.yml` and decrypts
-with it.
+One ansible-vault password decrypts both tracked
+`hosts/<name>/secrets/vault.yml` files. Keep that password and your SSH private
+key outside the repo.
 
 1. `git clone` this repo.
 2. Put your vault password (from your password manager) into `.vault-pass`:
@@ -43,15 +44,24 @@ with it.
    echo -n 'your-vault-password' > .vault-pass   # no trailing newline
    ```
    `.vault-pass` is gitignored — never commit it.
-3. Done. Any playbook now decrypts its host's secrets automatically.
+3. Make the SSH private key matching `firstboot_pubkey` in
+   `shared/firstboot/vars/main.yml` available to SSH (via a default identity,
+   SSH config, or an agent). Firstboot needs it to reconnect as root after reboot;
+   subsequent playbooks use it for root access.
+
+Playbooks decrypt their host's vault automatically. Reuse those
+vaults when reprovisioning; use `ansible-vault edit secrets/vault.yml` from the
+host directory to update values. Plaintext `vault.yml` files are **not ignored**:
+verify the `$ANSIBLE_VAULT;` header before staging any vault.
 
 ## Setting up a host
 
 Each host has **two playbooks**:
 
 - **`firstboot.yml`** — run *once* on a freshly-burned SD card. Connects with the
-  default image credential, sets strong passwords, drops your SSH key, sets the
-  hostname, moves journald to RAM, runs apt upgrade, hardens sshd to key-only,
+  default `pi:pi` image credential, escalates with sudo, sets strong passwords,
+  installs the configured root SSH public key, sets the hostname, moves journald
+  to RAM, runs apt upgrade, hardens sshd to key-only,
   and reboots. See the host's README for the exact manual prereqs (burn image,
   find the DHCP IP, etc.).
   ```bash

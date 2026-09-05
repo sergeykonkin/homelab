@@ -4,5 +4,7 @@
 # `ai`; this role deploys the app to /opt/litellm on it.
 
 # Where the stack lives on the host.
+# The Compose cert bind mount hardcodes /opt/litellm/certs; update
+# that template too if relocating these paths.
 litellm_deploy_path: /opt/litellm
 litellm_certs_path: "{{ litellm_deploy_path }}/certs"

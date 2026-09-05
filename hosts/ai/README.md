@@ -15,12 +15,12 @@ TLS endpoint — that's an app concern, handled by the `litellm` role's cert.
 
 1. **Burn the image.** FriendlyElec NanoPi Zero2 Ubuntu 24.04 (arm64) → SD card.
 2. **Boot and find the DHCP IP** (router lease table or `nmap -sn 10.4.0.0/24`).
-3. **Prepare the vault** (one-time):
+3. **Prepare the control machine** using the [root README](../../README.md#bootstrap-one-time-on-a-new-machine)
+   (vault password and matching SSH private key). Reuse the committed encrypted
+   vault; update it only if needed:
    ```bash
    cd hosts/ai
-   cp secrets/vault.yml.example secrets/vault.yml
-   # edit secrets/vault.yml — see "Populating the vault" below
-   ansible-vault encrypt secrets/vault.yml
+   ansible-vault edit secrets/vault.yml
    ```
 
 ## First boot (run once)
@@ -30,8 +30,10 @@ cd hosts/ai
 ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>
 ```
 
-Bootstrap: strong passwords (vault), SSH key for root, `nano`+`curl`, hostname
-`ai`, journald→RAM, `apt upgrade`, sshd key-only, reboot.
+Connects as `pi:pi` and escalates with sudo. Bootstrap sets strong passwords
+(vault), installs the configured SSH key for root, adds `nano`+`curl`, sets
+hostname `ai`, moves journald to RAM, runs `apt upgrade`, hardens sshd to key-only
+auth, and reboots. The reboot check reconnects as root using the SSH key.
 
 ## Real setup (after firstboot, re-runnable)
 
@@ -60,29 +62,23 @@ shows the shape and how to encrypt the file.
 | `vault_tls_crt` | TLS certificate PEM for `litellm.home.arpa` (see below) |
 | `vault_tls_key` | TLS private key PEM (the matching key) |
 
-To populate the vault, copy the example and fill in values from their sources
-(Nebius console, your own choices, the TLS cert you minted — see the table and
-the TLS section below), then encrypt:
+For an existing vault, use `ansible-vault edit secrets/vault.yml` from this host
+directory. If the vault is missing, create it with the command below, paste the
+schema from `secrets/vault.yml.example` into the editor, and fill in values from
+their sources (see the table and TLS section). Saving encrypts the file:
 
 ```bash
 cd hosts/ai
-cp secrets/vault.yml.example secrets/vault.yml
-# edit secrets/vault.yml with the values
-ansible-vault encrypt secrets/vault.yml
+ansible-vault create secrets/vault.yml  # only when no vault exists
 ```
 
 <details><summary>If an <code>ai</code> host is already running (adopting a hand-set-up host)</summary>
 
 When bringing an already-running host under this repo's management, the
-existing app values can be read off it instead of regenerated:
-
-```bash
-ssh ai.home.arpa 'cat /opt/litellm/.env'         # 3 KEY=VALUE lines
-ssh ai.home.arpa 'cat /opt/litellm/certs/tls.crt'
-ssh ai.home.arpa 'cat /opt/litellm/certs/tls.key'
-# paste into secrets/vault.yml, then:
-ansible-vault encrypt secrets/vault.yml
-```
+existing app values can be transferred from `/opt/litellm/.env` and
+`/opt/litellm/certs/tls.{crt,key}` on `root@ai.home.arpa` into the vault editor.
+Use `ansible-vault edit` for an existing vault or `ansible-vault create` for a
+missing one; avoid printing credentials or the private key into logs or replies.
 
 </details>
 
@@ -111,11 +107,16 @@ installed (clients must trust the mkcert root CA to avoid browser warnings).
 
 ## How model sync works
 
-1. `models-updater` sidecar runs `update_config.py` on startup and daily at 4:20 AM.
+1. `models-updater` runs `update_config.py` on startup and daily at 04:20 in the
+   container's timezone; Compose does not configure a timezone override.
 2. `update_config.py` fetches text-to-text models from the Nebius API, writes
    `config.yaml` into a shared docker volume.
-3. A SHA-256 hash prevents unnecessary writes; LiteLLM restarts only on changes.
-4. On a config change, the sidecar runs `docker restart litellm` via the
-   read-only docker socket mount.
+3. A SHA-256 hash prevents unchanged config/hash writes. The startup update never
+   restarts LiteLLM; Compose waits for the config file and healthy database
+   before starting the proxy.
+4. On scheduled updates, a change from an existing hash triggers
+   `docker restart litellm`. An initial config with no previous hash does not.
+   The socket is mounted with `:ro`, which allows Docker API mutations,
+   including restarts; the sidecar has privileged access to the Docker daemon.
 
 `config.yaml` is **generated at runtime**, not stored in this repo.

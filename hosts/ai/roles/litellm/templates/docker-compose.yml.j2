@@ -2,7 +2,7 @@
 # Templated from docker-compose.yml.j2. The role also writes, from the host
 # vault: .env (3 app vars) and certs/tls.{crt,key} in the deploy dir.
 #
-# No shared docker network yet. When open-webui is added, give both apps a
+# No shared external Docker network is configured. When open-webui is added, give both apps a
 # shared external network then.
 services:
   litellm:
@@ -35,10 +35,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      # A cold start runs ~157 prisma migrations against a fresh DB before the
-      # proxy binds :4000 — that took ~4 min in practice. Give the grace period
-      # enough headroom so the container isn't marked unhealthy during a cold
-      # start (after this, 3 retries × 30 s flags a truly broken app at ~5 m).
+      # Cold startup runs database migrations before the proxy binds :4000.
+      # The 300-second grace period accommodates this startup work.
+      # After the grace period, three failed checks mark the
+      # container unhealthy; the interval is 30 seconds and timeout 10 seconds.
       start_period: 300s
 
   models-updater:
@@ -51,6 +51,7 @@ services:
       NEBIUS_API_KEY: "${NEBIUS_API_KEY}"
       CONFIG_DIR: "/app/config"
     volumes:
+      # :ro does not restrict Docker API calls; the updater can restart containers.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - config:/app/config
     healthcheck:

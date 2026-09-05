@@ -64,14 +64,13 @@
     enabled: true
 
 # --- Bring the node up as a subnet router ----------------------------------
-# `tailscale up` with --auth-key is idempotent in recent versions: if already
-# up with the same config it's a no-op. We use --reset=false to avoid clobbering
-# unrelated prefs, and pass the advertised routes explicitly.
-# --accept-routes is needed so the node itself honors routes others advertise.
+# Reapply the advertised routes with --reset=false and --accept-routes. This
+# task does not inspect the previous preferences and always reports changed.
+# --accept-routes lets this node honor routes advertised by other nodes.
 #
 # The advertised routes must be APPROVED in the Tailscale admin console
-# (one-time, manual) — that approval is what makes them primary. The playbook
-# brings them up; the admin console makes them usable by the tailnet.
+# (one-time, manual). The playbook advertises them; approval makes them usable
+# by the tailnet, without selecting a primary router here.
 
 - name: Compose advertised routes argument
   ansible.builtin.set_fact:
@@ -87,16 +86,14 @@
       - --reset=false
       - --accept-routes
   register: tailscale_up_result
-  # `tailscale up` prints little on success and varies by version; treat any
-  # non-zero exit as failure, and assume a change unless the output explicitly
-  # says nothing changed. The auth key makes a precise idempotency check hard;
-  # correctness matters more than a green "ok" here.
+  # Report changed unconditionally; any non-zero exit is a failure.
   changed_when: true
   failed_when: tailscale_up_result.rc != 0
   no_log: true  # auth key is in the command
 
 # --- Auto-update -----------------------------------------------------------
 # Auto-update is a node-level pref, set with `tailscale set --auto-update`.
+# False skips this task; it does not disable an already-enabled preference.
 
 - name: Enable Tailscale auto-update
   ansible.builtin.command:
