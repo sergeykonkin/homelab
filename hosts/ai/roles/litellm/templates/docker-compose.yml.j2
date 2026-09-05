@@ -72,9 +72,13 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
-      interval: 1s
+      interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 12
+      # Postgres can take tens of seconds to initialize its data directory on
+      # first boot on arm64/overlayfs. Give it a generous grace period before
+      # failures count as unhealthy.
+      start_period: 120s
 
 volumes:
   postgres_data:

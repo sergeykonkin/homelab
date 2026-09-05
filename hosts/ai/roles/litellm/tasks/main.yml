@@ -109,6 +109,9 @@
   register: litellm_compose_up
   changed_when: "'Started' in (litellm_compose_up.stdout | default('')) or 'Creating' in (litellm_compose_up.stdout | default(''))"
   failed_when: litellm_compose_up.rc != 0
+  until: litellm_compose_up.rc == 0
+  retries: 3
+  delay: 30
   environment:
     # .env is auto-loaded by docker compose from the chdir; nothing to pass.
     COMPOSE_FILE: "{{ litellm_deploy_path }}/docker-compose.yml"
