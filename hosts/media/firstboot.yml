@@ -1,5 +1,5 @@
 ---
-# One-time bootstrap of the Ubuntu installation on eMMC.
+# One-time bootstrap of the Debian Trixie installation on eMMC.
 # Run from hosts/media with: ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>
 
 - name: First-boot bootstrap of media

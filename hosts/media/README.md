@@ -1,20 +1,20 @@
 # media
 
-A FriendlyElec **NanoPi R6S** (arm64, 64 GB eMMC) running Ubuntu 24.04
+A FriendlyElec **NanoPi R6S** (arm64, 64 GB eMMC) running Debian Trixie
 from eMMC. Ansible provides firstboot and Docker CE with the Compose plugin.
 No application containers are configured.
 
 ## Manual prerequisites
 
-1. **Install Ubuntu onto eMMC using an SD card.** Follow FriendlyElec's
+1. **Install Debian Trixie onto eMMC using an SD card.** Follow FriendlyElec's
    [R6S eMMC installation guide](https://wiki.friendlyelec.com/wiki/index.php/NanoPi_R6S#Install_OS_to_eMMC).
-   Download an R6S Ubuntu 24.04 arm64 eFlasher image from the official
+   Download an R6S Debian Trixie arm64 eFlasher image from the official
    `01_Official images/02_SD-to-eMMC images` directory and write it to a
-   microSD card. Boot the board from that card and let eFlasher install Ubuntu
+   microSD card. Boot the board from that card and let eFlasher install Debian Trixie
    to eMMC. Flashing overwrites the eMMC contents. Wait for completion, then
    remove the SD card and boot from eMMC before running Ansible.
 2. **Connect Ethernet and find the DHCP IP** in the router's lease table.
-   Confirm Ubuntu boots with the SD card removed and that SSH login as `pi`
+   Confirm Debian Trixie boots with the SD card removed and that SSH login as `pi`
    with password `pi` and sudo access work. The shared firstboot role requires
    this account, `/usr/bin/python3`, and OpenSSL on the image.
 3. **Prepare the control machine** using the
@@ -32,7 +32,7 @@ No application containers are configured.
 
 ## First boot (run once)
 
-Run against the fresh Ubuntu installation on eMMC:
+Run against the fresh Debian Trixie installation on eMMC:
 
 ```bash
 cd hosts/media

@@ -3,7 +3,7 @@
 # (the default overlay2 driver won't nest on the NanoPi's overlay-root).
 
 # fuse-overlayfs needs the fuse-overlayfs binary + fuse support in kernel.
-# (Ubuntu 24.04 arm64 NanoPi image has fuse; the binary is in apt.)
+# (Debian Trixie arm64 NanoPi image has fuse; the binary is in apt.)
 
 - name: Install fuse-overlayfs and supporting packages
   ansible.builtin.apt:

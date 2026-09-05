@@ -1,17 +1,17 @@
 # tailgate
 
-Tailscale subnet router on a FriendlyElec **NanoPi Zero2** (arm64, Ubuntu 24.04).
+Tailscale subnet router on a FriendlyElec **NanoPi Zero2** (arm64, Debian Trixie).
 Advertises the home VLANs `10.4.0.0/24` (management), `10.4.1.0/24` (trusted),
 and `10.4.4.0/24` (isolated) to the `batareeed@` tailnet. This repo deploys no
 other application, Docker stack, or cron job on this host.
 
 ## Manual prerequisites (do these by hand)
 
-1. **Burn the image.** Download the FriendlyElec NanoPi Zero2 Ubuntu 24.04
+1. **Burn the image.** Download the FriendlyElec NanoPi Zero2 Debian Trixie
    (arm64) image and write it to a microSD card:
    ```bash
    # with rpi-imager, balenaEtcher, or dd:
-   sudo dd if=nanopi-zero2-ubuntu.img of=/dev/rdiskN bs=4M conv=fsync
+   sudo dd if=nanopi-zero2-debian.img of=/dev/rdiskN bs=4M conv=fsync
    ```
 2. **Boot and find the DHCP IP.** Insert the card, power on. The host grabs an
    IP via DHCP on the management VLAN. Find it in the router's lease table or:

@@ -1,7 +1,7 @@
 # Repository guide
 
 This repo is the Ansible source of truth for three FriendlyElec NanoPi hosts:
-two Zero2 boards and one R6S with 64 GB eMMC (Ubuntu 24.04, arm64).
+two Zero2 boards and one R6S with 64 GB eMMC (Debian Trixie, arm64).
 Read the root README and the affected host's README
 for setup prerequisites; prefer executable configuration when comments disagree.
 `CLAUDE.md` is a relative symlink to this file; keep one source of instructions.
@@ -107,7 +107,7 @@ Finish with `git diff --check` and review the changed files.
 
 ## Host-specific behavior
 
-- **Media:** NanoPi R6S with 64 GB eMMC. Install Ubuntu from an SD eFlasher
+- **Media:** NanoPi R6S with 64 GB eMMC. Install Debian Trixie from an SD eFlasher
   image onto eMMC and remove the SD card before firstboot. `site.yml` runs only
   the shared `docker` role with its `fuse-overlayfs` default; no applications
   are configured. Its vault contains only the root and pi passwords.

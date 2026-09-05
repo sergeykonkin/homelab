@@ -1,6 +1,6 @@
 # ai
 
-A FriendlyElec **NanoPi Zero2** (arm64, Ubuntu 24.04) running the
+A FriendlyElec **NanoPi Zero2** (arm64, Debian Trixie) running the
 [LiteLLM](https://github.com/BerriAI/litellm) proxy app + PostgreSQL 16 + a
 `models-updater` sidecar via Docker Compose, serving TLS on `:443`.
 [`open-webui`](https://github.com/open-webui/open-webui) is planned as a second
@@ -13,7 +13,7 @@ TLS endpoint — that's an app concern, handled by the `litellm` role's cert.
 
 ## Manual prerequisites (do these by hand)
 
-1. **Burn the image.** FriendlyElec NanoPi Zero2 Ubuntu 24.04 (arm64) → SD card.
+1. **Burn the image.** FriendlyElec NanoPi Zero2 Debian Trixie (arm64) → SD card.
 2. **Boot and find the DHCP IP** (router lease table or `nmap -sn 10.4.0.0/24`).
 3. **Prepare the control machine** using the [root README](../../README.md#bootstrap-one-time-on-a-new-machine)
    (vault password and matching SSH private key). Reuse the committed encrypted
