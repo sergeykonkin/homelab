@@ -15,6 +15,12 @@ public key configured in `shared/firstboot/vars/main.yml`.
 | `ai.home.arpa` | FriendlyElec NanoPi Zero2 (arm64) | LiteLLM proxy app (serving `litellm.home.arpa` on :443); `open-webui` planned | [`hosts/ai/`](hosts/ai/) |
 | `media.home.arpa` | FriendlyElec NanoPi R6S (arm64, 64 GB eMMC) | Docker host | [`hosts/media/`](hosts/media/) |
 
+## Unmanaged hosts
+
+`optiplex.home.arpa` (Dell x86_64, Debian) is **not** provisioned
+by this repo. It sits in the DMZ and runs assorted services managed manually on
+the box.
+
 ## Layout
 
 ```

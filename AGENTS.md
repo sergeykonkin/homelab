@@ -6,6 +6,10 @@ Read the root README and the affected host's README
 for setup prerequisites; prefer executable configuration when comments disagree.
 `CLAUDE.md` is a relative symlink to this file; keep one source of instructions.
 
+An unmanaged x86_64 host, `optiplex.home.arpa` (Dell, Debian),
+also lives on the network in the DMZ. This repo does **not** provision it; it
+runs services configured manually on the box.
+
 ## Layout and conventions
 
 | Path | Responsibility |
