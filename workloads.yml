@@ -1,0 +1,5 @@
+# Allowed deployment hosts, keyed by Compose workload.
+workloads:
+  litellm:
+    allowed_hosts:
+      - ai

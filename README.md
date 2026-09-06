@@ -16,7 +16,7 @@ lives under `hosts/<name>/`; the repository also contains Compose workloads.
 ## Prepare the control machine
 
 ```sh
-brew install ansible ansible-lint age docker docker-compose docker-buildx
+brew install ansible ansible-lint age docker docker-compose docker-buildx yq
 make init
 ```
 
@@ -34,3 +34,9 @@ configuration and performs at most one reboot after its final tasks.
 ```sh
 make apply workload=litellm
 ```
+
+[`workloads.yml`](workloads.yml) maps each workload to its permitted deployment
+hosts. When it lists one host, `make apply workload=<name>` selects it. When it
+lists several, pass `host=<name>` or `host=all`; `all` applies the workload to
+every permitted host. `make apply` reads the map with `yq`; hosts require Docker
+contexts prepared by `make init`.

@@ -40,15 +40,32 @@ docker-contexts: ## Create or update Docker contexts for managed Docker hosts
 		fi; \
 	done
 
-apply: ## Build and apply a workload; pass workload=<name>
-	@test -n "$(workload)" || { echo "usage: make apply workload=<workload>" >&2; exit 1; }
+apply: ## Build and apply a workload; pass workload=<name> [host=<name>|all]
+	@test -n "$(workload)" || { echo "usage: make apply workload=<workload> [host=<host>|all]" >&2; exit 1; }
 	@test -f "workloads/$(workload)/compose.yaml" || { echo "unknown workload: $(workload)" >&2; exit 1; }
 	@test -f "workloads/$(workload)/.env" || { echo "run make init before applying $(workload)" >&2; exit 1; }
+	@command -v yq >/dev/null || { echo "yq is required" >&2; exit 1; }
 	@set -eu; \
 	workload_dir="workloads/$(workload)"; \
-	context=$$(sed -nE 's/^CONTEXT[[:space:]]*:?[[:space:]]*=[[:space:]]*//p' "$$workload_dir/workload.mk"); \
-	test -n "$$context" || { echo "missing CONTEXT in $$workload_dir/workload.mk" >&2; exit 1; }; \
-	docker --context "$$context" compose --env-file "$$workload_dir/.env" --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build
+	allowed_hosts=$$(WORKLOAD_NAME="$(workload)" yq -r '(.workloads[strenv(WORKLOAD_NAME)].allowed_hosts // [])[]' workloads.yml | tr '\n' ' '); \
+	test -n "$$allowed_hosts" || { echo "no deployment hosts configured for $(workload)" >&2; exit 1; }; \
+	if [ -z "$(host)" ]; then \
+		set -- $$allowed_hosts; \
+		[ "$$#" -eq 1 ] || { echo "$(workload) has multiple allowed hosts; pass host=<host> or host=all (allowed: $$allowed_hosts)" >&2; exit 1; }; \
+		targets="$$allowed_hosts"; \
+	elif [ "$(host)" = "all" ]; then \
+		targets="$$allowed_hosts"; \
+	else \
+		printf '%s\\n' "$$allowed_hosts" | tr ' ' '\\n' | grep -Fx "$(host)" >/dev/null || { echo "$(workload) cannot be deployed to $(host); allowed hosts: $$allowed_hosts" >&2; exit 1; }; \
+		targets="$(host)"; \
+	fi; \
+	for target in $$targets; do \
+		test -f "hosts/$$target/site.yml" || { echo "unknown host: $$target" >&2; exit 1; }; \
+		docker context inspect "$$target" >/dev/null 2>&1 || { echo "Docker context unavailable for $$target; run make init" >&2; exit 1; }; \
+	done; \
+	for target in $$targets; do \
+		docker --context "$$target" compose --env-file "$$workload_dir/.env" --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build; \
+	done
 
 bootstrap: ## Configure a host; pass host=<name> [ansible_args="..."]
 	@test -n "$(host)" || { echo "usage: make bootstrap host=<host>" >&2; exit 1; }
@@ -56,4 +73,4 @@ bootstrap: ## Configure a host; pass host=<name> [ansible_args="..."]
 	@cd "hosts/$(host)" && ansible-playbook site.yml $(ansible_args)
 
 help: ## Show available Make targets
-	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target> [workload=<name>]\n\nTargets:\n" } /^[[:alnum:]_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target> [workload=<name>] [host=<name>|all]\n\nTargets:\n" } /^[[:alnum:]_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
