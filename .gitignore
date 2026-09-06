@@ -13,6 +13,9 @@ __pycache__/
 # Ansible runtime metadata
 .ansible/
 
+# Temp files
+tmp/
+
 # NOTE: hosts/<name>/secrets/vault.yml IS committed — but ONLY in its
 # ansible-vault-encrypted form (file starts with `$ANSIBLE_VAULT;...`).
 # Plaintext vault.yml is NOT ignored. Before staging, verify the vault header.
