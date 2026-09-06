@@ -2,13 +2,18 @@
 
 This repo is the Ansible source of truth for three FriendlyElec NanoPi hosts:
 two Zero2 boards and one R6S with 64 GB eMMC (Debian Trixie, arm64).
-Read the root README and the affected host's README
-for setup prerequisites; prefer executable configuration when comments disagree.
+Prefer executable configuration when documentation disagrees.
 `CLAUDE.md` is a relative symlink to this file; keep one source of instructions.
 
 An unmanaged x86_64 host, `optiplex.home.arpa` (Dell, Debian),
 also lives on the network in the DMZ. This repo does **not** provision it; it
 runs services configured manually on the box.
+
+## Documentation
+
+README files are human-facing overviews with concise commands. Keep detailed
+implementation constraints, agent instructions, and operational invariants in
+this file.
 
 ## Layout and conventions
 
@@ -35,7 +40,7 @@ runs services configured manually on the box.
   `roles/bootstrap/vars/main.yml` (higher precedence than defaults).
 - Keep repeatable setup convergent, use handlers for service configuration, and
   give command/shell tasks deliberate change/failure reporting. Update README
-  instructions and vault examples when changing their interfaces.
+  overviews, commands, and vault examples when changing their interfaces.
 - Write documentation and comments as descriptions of the current state. Omit
   change history and wording such as "now" or "previously" that narrates edits.
 - Commit and push changes only when explicitly asked to deliver, ship, submit,

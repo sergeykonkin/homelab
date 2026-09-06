@@ -1,7 +1,6 @@
 SHELL := /bin/sh
 
 AGE_IDENTITY ?= $(HOME)/.age/age.key
-WORKLOAD ?= $(workload)
 
 .PHONY: init hooks decrypt-secrets docker-contexts apply ansible help
 
@@ -41,21 +40,21 @@ docker-contexts: ## Create or update Docker contexts for managed Docker hosts
 		fi; \
 	done
 
-apply: ## Build and apply a workload; pass WORKLOAD=<name>
-	@test -n "$(WORKLOAD)" || { echo "usage: make apply WORKLOAD=<workload>" >&2; exit 1; }
-	@test -f "workloads/$(WORKLOAD)/compose.yaml" || { echo "unknown workload: $(WORKLOAD)" >&2; exit 1; }
-	@test -f "workloads/$(WORKLOAD)/.env" || { echo "run make init before applying $(WORKLOAD)" >&2; exit 1; }
+apply: ## Build and apply a workload; pass workload=<name>
+	@test -n "$(workload)" || { echo "usage: make apply workload=<workload>" >&2; exit 1; }
+	@test -f "workloads/$(workload)/compose.yaml" || { echo "unknown workload: $(workload)" >&2; exit 1; }
+	@test -f "workloads/$(workload)/.env" || { echo "run make init before applying $(workload)" >&2; exit 1; }
 	@set -eu; \
-	workload_dir="workloads/$(WORKLOAD)"; \
+	workload_dir="workloads/$(workload)"; \
 	context=$$(sed -nE 's/^CONTEXT[[:space:]]*:?[[:space:]]*=[[:space:]]*//p' "$$workload_dir/workload.mk"); \
 	test -n "$$context" || { echo "missing CONTEXT in $$workload_dir/workload.mk" >&2; exit 1; }; \
 	docker --context "$$context" compose --env-file "$$workload_dir/.env" --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build
 
-ansible: ## Run a playbook; pass host=<name> playbook=<bootstrap|site>
+ansible: ## Run a playbook; pass host=<name> playbook=<bootstrap|site> [ansible_args="..."]
 	@test -n "$(host)" || { echo "usage: make ansible host=<host> playbook=<bootstrap|site>" >&2; exit 1; }
 	@test "$(playbook)" = bootstrap || test "$(playbook)" = site || { echo "playbook must be bootstrap or site" >&2; exit 1; }
 	@test -f "hosts/$(host)/$(playbook).yml" || { echo "unknown host: $(host)" >&2; exit 1; }
-	@cd "hosts/$(host)" && ansible-playbook "$(playbook).yml"
+	@cd "hosts/$(host)" && ansible-playbook "$(playbook).yml" $(ansible_args)
 
 help: ## Show available Make targets
-	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target> [WORKLOAD=<name>]\n\nTargets:\n" } /^[[:alnum:]_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target> [workload=<name>]\n\nTargets:\n" } /^[[:alnum:]_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
