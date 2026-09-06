@@ -1,0 +1,15 @@
+---
+# tailgate bootstrap entry point.
+#
+# Usage:
+#   cd hosts/tailgate
+#   ansible-playbook bootstrap.yml -e ansible_host=<DHCP-IP-of-fresh-host>
+#
+# -e ansible_host overrides the steady-state DNS name in inventory.ini, because
+# a fresh host doesn't answer tailgate.home.arpa yet (no hostname, no DNS lease).
+
+- name: Run shared bootstrap playbook
+  import_playbook: ../../roles/bootstrap/playbook.yml
+  vars:
+    bootstrap_inventory_group: tailgate_hosts
+    bootstrap_vault_file: "{{ playbook_dir }}/secrets/vault.yml"

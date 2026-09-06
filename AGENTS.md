@@ -16,12 +16,12 @@ runs services configured manually on the box.
 | --- | --- |
 | `hosts/tailgate/` | `tailgate.home.arpa`: Tailscale subnet router only |
 | `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL, model updater |
-| `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation, firstboot and Docker only |
-| `roles/firstboot/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, reboot |
+| `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation, bootstrap and Docker only |
+| `roles/bootstrap/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, reboot |
 | `roles/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
 
 - Each host is an independent Ansible project: `ansible.cfg`, `inventory.ini`,
-  `firstboot.yml`, `site.yml`, local `roles/`, and `secrets/`. There is no root
+  `bootstrap.yml`, `site.yml`, local `roles/`, and `secrets/`. There is no root
   inventory or root playbook. Run Ansible **inside `hosts/<name>/`** so its config
   resolves `../../roles:./roles` and `../../.vault-pass` correctly.
 - Keep new roles local until a second host needs them, then move them to
@@ -31,8 +31,8 @@ runs services configured manually on the box.
   Steady-state access is root over SSH keys; Python is `/usr/bin/python3`.
 - Follow existing YAML style: two-space indentation, named tasks, fully qualified
   module names, quoted file modes, role-prefixed variables, and `vault_` secrets.
-  Put tunables in role defaults; existing firstboot settings/key live in
-  `roles/firstboot/vars/main.yml` (higher precedence than defaults).
+  Put tunables in role defaults; existing bootstrap settings/key live in
+  `roles/bootstrap/vars/main.yml` (higher precedence than defaults).
 - Keep repeatable setup convergent, use handlers for service configuration, and
   give command/shell tasks deliberate change/failure reporting. Update README
   instructions and vault examples when changing their interfaces.
@@ -54,15 +54,15 @@ files under `hosts/*/secrets/`, an ASCII-armored age header on `.vault-pass.age`
 and `workloads/*/.env.age`, and rejects staged plaintext secret files.
 
 ```sh
-# Run from each affected host directory; roles/firstboot changes affect all hosts.
+# Run from each affected host directory; roles/bootstrap changes affect all hosts.
 cd hosts/ai                    # or hosts/tailgate or hosts/media
-ansible-playbook --syntax-check firstboot.yml
+ansible-playbook --syntax-check bootstrap.yml
 ansible-playbook --syntax-check site.yml
-ansible-lint firstboot.yml site.yml  # if installed
+ansible-lint bootstrap.yml site.yml  # if installed
 
 # Live provisioning, when deployment is part of the task:
-ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>  # fresh image only
-ansible-playbook site.yml                              # after firstboot
+ansible-playbook bootstrap.yml -e ansible_host=<DHCP-IP>  # fresh image only
+ansible-playbook site.yml                              # after bootstrap
 ```
 
 Syntax checks use the configured vault password without contacting the hosts.
@@ -93,14 +93,14 @@ Finish with `git diff --check` and review the changed files.
 
 ## Bootstrap and Docker invariants
 
-- Firstboot connects as **`pi:pi`**, becomes root with sudo, changes both passwords,
+- Bootstrap connects as **`pi:pi`**, becomes root with sudo, changes both passwords,
   and switches the remaining sudo tasks to the new pi password.
 - Install the configured root public key before disabling password SSH. Preserve
   the `00-homelab-hardening.conf` drop-in, `/run/sshd` creation plus `sshd -t`
   before restarting SSH, and handler flush before reboot. Reboot reconnects as
   root using public-key auth at the same overridden DHCP IP. Ensure the control
-  machine has the private key matching `firstboot_pubkey` before provisioning.
-- Firstboot changes access credentials, upgrades packages, and reboots; it is
+  machine has the private key matching `bootstrap_pubkey` before provisioning.
+- Bootstrap changes access credentials, upgrades packages, and reboots; it is
   for fresh images. `site.yml` is the repeatable setup path. Current per-host
   configs disable SSH host-key checking.
 - NanoPi's root filesystem is overlayfs: Docker needs **fuse-overlayfs**, since
@@ -112,7 +112,7 @@ Finish with `git diff --check` and review the changed files.
 ## Host-specific behavior
 
 - **Media:** NanoPi R6S with 64 GB eMMC. Install Debian Trixie from an SD eFlasher
-  image onto eMMC and remove the SD card before firstboot. `site.yml` runs only
+  image onto eMMC and remove the SD card before bootstrap. `site.yml` runs only
   the shared `docker` role with its `fuse-overlayfs` default; no applications
   are configured. Its vault contains only the root and pi passwords.
 - **Tailgate:** enables IPv4/IPv6 forwarding and advertises `10.4.0.0/24`

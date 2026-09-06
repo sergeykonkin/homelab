@@ -18,7 +18,7 @@ other application, Docker stack, or cron job on this host.
    ```bash
    nmap -sn 10.4.0.0/24   # or check the gateway's DHCP leases
    ```
-3. **Prepare the control machine** using the [root README](../../README.md#bootstrap-one-time-on-a-new-machine)
+3. **Prepare the control machine** using the [root README](../../README.md#bootstrap)
    (vault password and matching SSH private key). Reuse the committed encrypted
    vault; update it only if needed:
    ```bash
@@ -31,21 +31,22 @@ other application, Docker stack, or cron job on this host.
    `vault_root_pw`, `vault_pi_pw`, and `vault_tailscale_authkey`; obtain the latter
    from [Tailscale keys](https://login.tailscale.com/settings/keys).
 
-## First boot (run once)
+## Bootstrap
 
 ```bash
 cd hosts/tailgate
-ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>
+ansible-playbook bootstrap.yml -e ansible_host=<DHCP-IP>
 ```
 
-This connects with the default image credential (`pi`:`pi`), escalates with sudo,
-sets strong passwords (vault), installs the configured SSH key for root, adds
-`nano`+`curl`, sets the hostname to `tailgate`, moves journald to RAM, runs
-`apt upgrade`, hardens
-sshd to **key-only auth**, and reboots. The reboot check reconnects as root using
-the SSH key.
+This detects root public-key access and otherwise connects with the default
+image credential (`pi`:`pi`) and escalates with sudo. It sets strong passwords
+(vault), installs the configured SSH key for root, adds `nano`+`curl`, sets the
+hostname to `tailgate`, moves journald to RAM, runs `apt upgrade`, and hardens
+sshd to **key-only auth**. It reboots when the initial configuration or a package
+upgrade requires it. Run it again after an interrupted execution or to converge
+this configuration.
 
-## Real setup (after firstboot, re-runnable)
+## Real setup (after bootstrap, re-runnable)
 
 Once the host answers `tailgate.home.arpa` (DNS served by the gateway):
 
@@ -71,7 +72,7 @@ tailnet. (Tailscale requires this approval for any advertised route.)
 
 ## Reprovisioning (wiped SD card)
 
-Burn a fresh image → `firstboot.yml` (with the new DHCP IP) → `site.yml`.
+Burn a fresh image → `bootstrap.yml` (with the new DHCP IP) → `site.yml`.
 The reusable Tailscale auth key in the vault lets the node rejoin the tailnet
 unattended. It may get a new `100.x` Tailscale IP unless you preserve state.
 
@@ -79,7 +80,7 @@ unattended. It may get a new `100.x` Tailscale IP unless you preserve state.
 
 - `ansible.cfg` — per-host ansible config (roles_path, vault pass)
 - `inventory.ini` — `tailgate` host + `base_hostname` var
-- `firstboot.yml` — one-time bootstrap (uses `roles/firstboot`)
+- `bootstrap.yml` — repeatable bootstrap (uses `roles/bootstrap`)
 - `site.yml` — real setup (uses the colocated `tailscale` role)
 - `roles/tailscale/` — Tailscale install + subnet-router bring-up
 - `secrets/vault.yml` — encrypted: `vault_root_pw`, `vault_pi_pw`, `vault_tailscale_authkey`

@@ -1,0 +1,51 @@
+---
+# Shared bootstrap entry point. The importing host playbook sets
+# bootstrap_inventory_group to its inventory group.
+
+- name: Select bootstrap connection
+  hosts: "{{ bootstrap_inventory_group | default('bootstrap_targets') }}"
+  gather_facts: false
+  connection: local
+  vars_files:
+    - vars/main.yml
+    - "{{ bootstrap_vault_file | default('/dev/null') }}"
+  tasks:
+    - name: Check root public-key access
+      ansible.builtin.command:
+        argv:
+          - ssh
+          - -o
+          - BatchMode=yes
+          - -o
+          - ConnectTimeout=5
+          - -o
+          - StrictHostKeyChecking=no
+          - -o
+          - UserKnownHostsFile=/dev/null
+          - "root@{{ ansible_host }}"
+          - "true"
+      register: bootstrap_root_key_access
+      changed_when: false
+      failed_when: false
+
+    - name: Add host with selected bootstrap connection
+      ansible.builtin.add_host:
+        name: "{{ inventory_hostname }}"
+        groups: bootstrap_targets
+        ansible_host: "{{ ansible_host }}"
+        ansible_user: "{{ 'root' if bootstrap_root_key_access.rc == 0 else bootstrap_default_user }}"
+        ansible_password: "{{ omit if bootstrap_root_key_access.rc == 0 else bootstrap_default_password }}"
+        ansible_become_password: "{{ omit if bootstrap_root_key_access.rc == 0 else bootstrap_default_password }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ansible_ssh_extra_args: >-
+          {{ '-o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o BatchMode=yes'
+             if bootstrap_root_key_access.rc == 0
+             else '-o PreferredAuthentications=password -o PubkeyAuthentication=no' }}
+
+- name: Bootstrap configuration
+  hosts: bootstrap_targets
+  become: true
+  vars_files:
+    - "{{ bootstrap_vault_file | default('/dev/null') }}"
+  roles:
+    - bootstrap

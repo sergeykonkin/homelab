@@ -1,7 +1,7 @@
 # media
 
 A FriendlyElec **NanoPi R6S** (arm64, 64 GB eMMC) running Debian Trixie
-from eMMC. Ansible provides firstboot and Docker CE with the Compose plugin.
+from eMMC. Ansible provides bootstrap and Docker CE with the Compose plugin.
 No application containers are configured.
 
 ## Manual prerequisites
@@ -15,12 +15,12 @@ No application containers are configured.
    remove the SD card and boot from eMMC before running Ansible.
 2. **Connect Ethernet and find the DHCP IP** in the router's lease table.
    Confirm Debian Trixie boots with the SD card removed and that SSH login as `pi`
-   with password `pi` and sudo access work. The shared firstboot role requires
+   with password `pi` and sudo access work. The shared bootstrap role requires
    this account, `/usr/bin/python3`, and OpenSSL on the image.
 3. **Prepare the control machine** using the
-   [root README](../../README.md#bootstrap-one-time-on-a-new-machine), including
-   the vault password and private key matching `firstboot_pubkey` in
-   `roles/firstboot/vars/main.yml`. The encrypted vault contains independent
+   [root README](../../README.md#bootstrap), including
+   the vault password and private key matching `bootstrap_pubkey` in
+   `roles/bootstrap/vars/main.yml`. The encrypted vault contains independent
    random root and `pi` passwords. To edit them:
    ```bash
    cd hosts/media
@@ -30,20 +30,22 @@ No application containers are configured.
    board's address for repeatable setup. Ansible sets the OS hostname to
    `media`; it does not configure the router or DNS.
 
-## First boot (run once)
+## Bootstrap
 
 Run against the fresh Debian Trixie installation on eMMC:
 
 ```bash
 cd hosts/media
-ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>
+ansible-playbook bootstrap.yml -e ansible_host=<DHCP-IP>
 ```
 
-The shared `firstboot` role connects as `pi:pi`, uses sudo, sets the root and
-`pi` passwords from the vault, installs the root SSH public key, sets hostname
-`media`, upgrades packages, installs `nano` and `curl`, configures RAM-backed
-journald, hardens SSH to key-only authentication, and reboots. The reboot check
-reconnects as root using the configured key at the supplied DHCP IP.
+The shared `bootstrap` role detects root public-key access and otherwise
+connects as `pi:pi` with sudo. It sets the root and `pi` passwords from the
+vault, installs the root SSH public key, sets hostname `media`, upgrades
+packages, installs `nano` and `curl`, configures RAM-backed journald, and
+hardens SSH to key-only authentication. It reboots when the initial
+configuration or a package upgrade requires it. Run it again after an
+interrupted execution or to converge this configuration.
 
 ## Docker setup (repeatable)
 
@@ -71,7 +73,7 @@ the schema in `secrets/vault.yml.example` with strong passwords.
 ## Files
 
 - `ansible.cfg`, `inventory.ini` — host configuration for `media.home.arpa`
-- `firstboot.yml` — one-time bootstrap using `roles/firstboot`
+- `bootstrap.yml` — repeatable bootstrap using `roles/bootstrap`
 - `site.yml` — repeatable setup using `roles/docker`
 - `roles/` — directory for host-specific roles
 - `secrets/vault.yml` — encrypted root and `pi` passwords

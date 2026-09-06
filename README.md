@@ -5,7 +5,7 @@ own folder under `hosts/<name>/` and is provisioned with **Ansible**, with manua
 prereqs (installing the OS on SD or eMMC) documented in that host's `README.md`.
 Host secrets are encrypted at rest with **ansible-vault**. Reprovisioning needs
 a fresh `git clone`, the age identity at `~/.age/age.key`, and the SSH private
-key matching the public key configured in `roles/firstboot/vars/main.yml`.
+key matching the public key configured in `roles/bootstrap/vars/main.yml`.
 
 ## Hosts
 
@@ -26,10 +26,10 @@ the box.
 ```
 homelab/
 ├── roles/                   # cross-host roles (promoted here when used by 2+ hosts)
-│   ├── firstboot/          #   one-time bootstrap: passwords, pubkey, hostname, journald, apt, sshd harden, reboot
+│   ├── bootstrap/          #   host initial bootstrap: passwords, pubkey, hostname, journald, apt, sshd harden, reboot
 │   └── docker/             #   Docker + fuse-overlayfs (NanoPi overlay-root needs it)
 ├── hosts/
-│   └── <name>/             # self-contained: ansible.cfg, inventory.ini, firstboot.yml, site.yml, roles/, secrets/
+│   └── <name>/             # self-contained: ansible.cfg, inventory.ini, bootstrap.yml, site.yml, roles/, secrets/
 └── workloads/
     └── <name>/             # Compose workload, encrypted environment, deployment metadata
 ```
@@ -41,7 +41,7 @@ Roles start **colocated** in `hosts/<name>/roles/` and are promoted to `roles/`
 only once a second host needs them (a pure `git mv` — playbooks reference roles
 by name, not path).
 
-## Bootstrap (one-time, on a new machine)
+## Bootstrap
 
 One ansible-vault password decrypts all tracked
 `hosts/<name>/secrets/vault.yml` files. `.vault-pass.age` stores that password
@@ -53,9 +53,9 @@ the repository.
 2. Install `age` and make `~/.age/age.key` available. It decrypts the tracked
    `.vault-pass.age` file into the ignored local `.vault-pass` file during
    `make init`.
-3. Make the SSH private key matching `firstboot_pubkey` in
-   `roles/firstboot/vars/main.yml` available to SSH (via a default identity,
-   SSH config, or an agent). Firstboot needs it to reconnect as root after reboot;
+3. Make the SSH private key matching `bootstrap_pubkey` in
+   `roles/bootstrap/vars/main.yml` available to SSH (via a default identity,
+   SSH config, or an agent). Bootstrap needs it to reconnect as root after reboot;
    subsequent playbooks use it for root access.
 
 Playbooks decrypt their host's vault automatically. Reuse those
@@ -73,18 +73,19 @@ only and does not decrypt or authenticate encrypted contents.
 
 Each host has **two playbooks**:
 
-- **`firstboot.yml`** — run *once* on a fresh OS installation on SD or eMMC.
-  Connects with the default `pi:pi` image credential, escalates with sudo, sets strong passwords,
-  installs the configured root SSH public key, sets the hostname, moves journald
-  to RAM, runs apt upgrade, hardens sshd to key-only,
-  and reboots. See the host's README for the exact manual prereqs (burn image,
-  find the DHCP IP, etc.).
+- **`bootstrap.yml`** — configures a fresh OS installation on SD or eMMC and
+  converges the same configuration on repeated runs. It detects root public-key
+  access and otherwise connects with `pi:pi`, escalates with sudo, sets strong
+  passwords, installs the configured root SSH public key, sets the hostname,
+  moves journald to RAM, runs apt upgrade, hardens sshd to key-only, and reboots
+  when initial configuration or package upgrades require it. See the host's
+  README for the exact manual prereqs (burn image, find the DHCP IP, etc.).
   ```bash
   cd hosts/<name>
-  ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>
+  ansible-playbook bootstrap.yml -e ansible_host=<DHCP-IP>
   ```
 
-- **`site.yml`** — run *anytime after firstboot* to apply host configuration
+- **`site.yml`** — run *anytime after bootstrap* to apply host configuration
   (Tailscale on tailgate; Docker on ai and media).
   Re-runnable; converges the host to the desired state.
   ```bash
@@ -99,7 +100,7 @@ See each host's `README.md` for the full setup walkthrough.
 - `make` and Python 3 — `make init` configures the repository's pre-commit hook,
   decrypts local workload environments, configures Docker contexts, and runs with
   `python3`.
-- `ansible` (ansible-core ≥ 2.21) — `brew install ansible`. `firstboot.yml`
+- `ansible` (ansible-core ≥ 2.21) — `brew install ansible`. `bootstrap.yml`
   connects to a fresh host with the default image password over SSH; ansible-core
   ≥ 2.19 handles password auth natively (no extra tooling required).
 - `ansible-lint` (optional) — `brew install ansible-lint`

@@ -1,12 +1,12 @@
 ---
-# ai playbook — host configuration, re-runnable anytime after firstboot.
+# ai playbook — host configuration, re-runnable anytime after bootstrap.
 # Installs Docker with fuse-overlayfs for the NanoPi overlay-root.
 #
 # Usage:
 #   cd hosts/ai
 #   ansible-playbook site.yml
 #
-# Prereq: firstboot.yml has run (key auth works; hostname/DNS set).
+# Prereq: bootstrap.yml has run (key auth works; hostname/DNS set).
 
 - name: Set up ai Docker host
   hosts: ai_hosts

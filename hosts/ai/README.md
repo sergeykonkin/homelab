@@ -8,17 +8,20 @@ contexts; this host's Ansible project does not deploy applications.
 
 1. Burn the FriendlyElec NanoPi Zero2 Debian Trixie (arm64) image to an SD card.
 2. Boot it and find its DHCP IP address.
-3. Prepare the control machine according to the [root README](../../README.md#bootstrap-one-time-on-a-new-machine).
+3. Prepare the control machine according to the [root README](../../README.md#bootstrap).
 
-## First boot
+## Bootstrap
 
 ```bash
 cd hosts/ai
-ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>
+ansible-playbook bootstrap.yml -e ansible_host=<DHCP-IP>
 ```
 
-Firstboot connects as `pi:pi`, configures passwords and root key access, sets
-the hostname, upgrades packages, hardens SSH, and reboots.
+Bootstrap detects root public-key access and otherwise uses the fresh-image
+`pi:pi` credential. It configures passwords and root key access, sets the
+hostname, upgrades packages, hardens SSH, and reboots when the initial
+configuration or package upgrade requires it. It can be run again after an
+interrupted execution or to converge this configuration.
 
 ## Host configuration
 
@@ -46,5 +49,5 @@ public routing when it is deployed as an ingress workload.
 
 ## Host vault
 
-`secrets/vault.yml` contains only the root and pi passwords used by firstboot.
+`secrets/vault.yml` contains only the root and pi passwords used by bootstrap.
 Use `ansible-vault edit secrets/vault.yml` from this directory to change them.

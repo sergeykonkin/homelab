@@ -1,15 +1,19 @@
 ---
-# roles/firstboot — one-time bootstrap of a freshly-burned NanoPi host.
-# Run via the per-host firstboot.yml, which connects with the default image
-# credential (pi:pi) and becomes root via sudo (password: pi) before this role
-# changes it.
+# roles/bootstrap — bootstrap configuration for a NanoPi host.
+# The per-host bootstrap.yml connects using the fresh-image credential when
+# needed, or root public-key authentication after root access is configured.
 #
-# Prereqs (set by the host's firstboot.yml / inventory / vault):
+# Prereqs (set by the host's bootstrap.yml / inventory / vault):
 #   base_hostname        — e.g. "tailgate", "ai"
 #   vault_root_pw        — new root password (vault)
 #   vault_pi_pw          — new pi password (vault)
 
 # --- Hostname --------------------------------------------------------------
+
+- name: Check whether bootstrap completed
+  ansible.builtin.stat:
+    path: /var/lib/homelab/bootstrap-complete
+  register: bootstrap_complete_marker
 
 - name: Set hostname
   ansible.builtin.hostname:
@@ -22,45 +26,6 @@
     line: "127.0.1.1\t{{ base_hostname }}"
     state: present
 
-# --- Passwords -------------------------------------------------------------
-# Hash with SHA-512 crypt via the target's openssl (3.x), so no passlib/crypt
-# dependency is needed on the control machine or the target. The hash is
-# generated on the target (where it'll be used) and fed to ansible.builtin.user.
-
-- name: Generate root password hash (on target)
-  ansible.builtin.command:
-    argv: [openssl, passwd, -6, "{{ vault_root_pw }}"]
-  register: firstboot_root_hash
-  changed_when: false
-  no_log: true
-
-- name: Set root password
-  ansible.builtin.user:
-    name: root
-    password: "{{ firstboot_root_hash.stdout }}"
-  no_log: true
-
-- name: Generate pi password hash (on target)
-  ansible.builtin.command:
-    argv: [openssl, passwd, -6, "{{ vault_pi_pw }}"]
-  register: firstboot_pi_hash
-  changed_when: false
-  no_log: true
-
-- name: Set pi password
-  ansible.builtin.user:
-    name: pi
-    password: "{{ firstboot_pi_hash.stdout }}"
-  no_log: true
-
-# Remaining tasks connected as pi need its new sudo password. Replace the
-# play's bootstrap become password; the reboot task below switches to root
-# key auth and does not depend on pi's sudo credentials.
-- name: Switch sudo password to the new pi password for remaining tasks
-  ansible.builtin.set_fact:
-    ansible_become_password: "{{ vault_pi_pw }}"
-  no_log: true
-
 # --- SSH public key for root ----------------------------------------------
 
 - name: Ensure /root/.ssh exists
@@ -72,10 +37,49 @@
     mode: "0700"
 
 - name: Add SSH public key for root
-  ansible.builtin.authorized_key:
+  ansible.posix.authorized_key:
     user: root
-    key: "{{ firstboot_pubkey }}"
+    key: "{{ bootstrap_pubkey }}"
     state: present
+
+# --- Passwords -------------------------------------------------------------
+# Hash with SHA-512 crypt via the target's openssl (3.x), so no passlib/crypt
+# dependency is needed on the control machine or the target. The hash is
+# generated on the target (where it'll be used) and fed to ansible.builtin.user.
+
+- name: Generate root password hash (on target)
+  ansible.builtin.command:
+    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-root", "{{ vault_root_pw }}"]
+  register: bootstrap_root_hash
+  changed_when: false
+  no_log: true
+
+- name: Set root password
+  ansible.builtin.user:
+    name: root
+    password: "{{ bootstrap_root_hash.stdout }}"
+  no_log: true
+
+- name: Generate pi password hash (on target)
+  ansible.builtin.command:
+    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-pi", "{{ vault_pi_pw }}"]
+  register: bootstrap_pi_hash
+  changed_when: false
+  no_log: true
+
+- name: Set pi password
+  ansible.builtin.user:
+    name: pi
+    password: "{{ bootstrap_pi_hash.stdout }}"
+  no_log: true
+
+# Remaining tasks connected as pi need its new sudo password. Replace the
+# play's bootstrap become password; the reboot task below switches to root
+# key auth and does not depend on pi's sudo credentials.
+- name: Switch sudo password to the new pi password for remaining tasks
+  ansible.builtin.set_fact:
+    ansible_become_password: "{{ vault_pi_pw }}"
+  no_log: true
 
 # --- apt update + upgrade --------------------------------------------------
 
@@ -83,12 +87,13 @@
   ansible.builtin.apt:
     update_cache: true
     upgrade: true
+  register: bootstrap_apt_upgrade
 
 # --- Base packages ---------------------------------------------------------
 
 - name: Install base packages
   ansible.builtin.package:
-    name: "{{ firstboot_packages }}"
+    name: "{{ bootstrap_packages }}"
     state: present
 
 # --- journald -> volatile RAM (saves SD card) ------------------------------
@@ -124,25 +129,31 @@
     mode: "0644"
   notify: Validate and restart sshd
 
-# --- Reboot ----------------------------------------------------------------
+# --- Completion and reboot -------------------------------------------------
 # Flush handlers so sshd validation+restart happens before the reboot.
 - name: Flush handlers (apply sshd/journald changes before reboot)
   ansible.builtin.meta: flush_handlers
 
-- name: Reboot to complete first boot
-  # Password SSH is disabled. Use root public-key auth for this task and
-  # its fresh connection after reboot, as in the steady-state playbook.
-  # The control machine must offer the private key matching firstboot_pubkey;
-  # no identity-file path is pinned here. Clear the bootstrap password and
-  # common args (host-key options); replace the extra args that forced password
-  # auth with public-key-only, noninteractive options. Per-host ansible.cfg
-  # disables host-key checking.
-  # Keep the CLI's ansible_host override; the DHCP IP must survive the reboot.
+- name: Record completed bootstrap configuration
+  ansible.builtin.file:
+    path: /var/lib/homelab
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create bootstrap completion marker
+  ansible.builtin.file:
+    path: /var/lib/homelab/bootstrap-complete
+    state: touch
+    owner: root
+    group: root
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+
+- name: Reboot to complete bootstrap
   ansible.builtin.reboot:
     reboot_timeout: 300
     test_command: whoami
-  vars:
-    ansible_user: root
-    ansible_password: ""
-    ansible_ssh_common_args: ""
-    ansible_ssh_extra_args: "-o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o BatchMode=yes"
+  when: not bootstrap_complete_marker.stat.exists or bootstrap_apt_upgrade.changed

@@ -1,12 +1,12 @@
 ---
-# tailgate playbook — real setup, re-runnable anytime after firstboot.
+# tailgate playbook — real setup, re-runnable anytime after bootstrap.
 # Installs Tailscale and brings the node up as a subnet router.
 #
 # Usage:
 #   cd hosts/tailgate
 #   ansible-playbook site.yml
 #
-# Prereq: firstboot.yml has run (key auth works; hostname/DNS is set).
+# Prereq: bootstrap.yml has run (key auth works; hostname/DNS is set).
 # Prereq: tailscale auth key in secrets/vault.yml (vault_tailscale_authkey).
 # Manual one-time: approve the advertised routes in the Tailscale admin console.
 

@@ -1,5 +1,5 @@
 ---
-# Repeatable Docker setup after firstboot.
+# Repeatable Docker setup after bootstrap.
 # Run from hosts/media with: ansible-playbook site.yml
 
 - name: Set up media (Docker)

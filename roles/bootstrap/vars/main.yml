@@ -1,0 +1,20 @@
+---
+# Packages to install on bootstrap.
+bootstrap_packages:
+  - nano
+  - curl
+
+# journald: move logs to volatile RAM to spare the SD card.
+bootstrap_journald_storage: volatile
+bootstrap_journald_system_max_use: 256M
+
+# SSH public key dropped into /root/.ssh/authorized_keys by this role.
+bootstrap_pubkey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBRzjnZwOOxhxOuIFvKK60a3Fl07agbMMxCzHrp5aPOT srj@macbook-air-m4"
+
+# Default image credential for a freshly-burned NanoPi Zero2.
+# Not a secret — it's the public default. bootstrap.yml uses these values for
+# the initial connection and sudo credentials.
+# pi:pi logs in as the unprivileged user; the play runs `become: true` with this
+# same password to act as root via sudo.
+bootstrap_default_user: pi
+bootstrap_default_password: pi
