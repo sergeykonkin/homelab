@@ -1,0 +1,24 @@
+---
+# acme host configuration. Installs Docker with fuse-overlayfs for the NanoPi
+# overlay-root.
+#
+# Usage:
+#   cd hosts/acme
+#   ansible-playbook site.yml
+
+- name: Select acme connection
+  import_playbook: ../../roles/bootstrap/playbook.yml
+  vars:
+    bootstrap_inventory_group: acme_hosts
+
+- name: Set up acme Docker host
+  hosts: acme_hosts
+  become: true
+  roles:
+    - bootstrap
+    - docker
+  tasks:
+    - name: Finalize acme host configuration
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: finalize

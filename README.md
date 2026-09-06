@@ -10,6 +10,7 @@ lives under `hosts/<name>/`; the repository also contains Compose workloads.
 | [`tailgate.home.arpa`](hosts/tailgate/) | Tailscale subnet router |
 | [`ai.home.arpa`](hosts/ai/) | Docker host for LiteLLM |
 | [`media.home.arpa`](hosts/media/) | Docker host |
+| [`acme.home.arpa`](hosts/acme/) | Docker host for the ACME-DNS gateway |
 
 `optiplex.home.arpa` is unmanaged and does not use this repository.
 
@@ -26,7 +27,7 @@ make init
 make bootstrap host=<host>
 ```
 
-Use `tailgate`, `ai`, or `media` for `<host>`. The run applies all host
+Use `tailgate`, `ai`, `media`, or `acme` for `<host>`. The run applies all host
 configuration and performs at most one reboot after its final tasks.
 
 ## Apply a workload

@@ -31,7 +31,7 @@ decrypt-secrets: ## Decrypt the vault password and workload secret files
 
 docker-contexts: ## Create or update Docker contexts for managed Docker hosts
 	@set -eu; \
-	for context_host in ai media; do \
+	for context_host in acme ai media; do \
 		endpoint="ssh://root@$$context_host.home.arpa"; \
 		if docker context inspect "$$context_host" >/dev/null 2>&1; then \
 			docker context update "$$context_host" --docker "host=$$endpoint" >/dev/null; \

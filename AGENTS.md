@@ -1,7 +1,7 @@
 # Repository guide
 
-This repo is the Ansible source of truth for three FriendlyElec NanoPi hosts:
-two Zero2 boards and one R6S with 64 GB eMMC (Debian Trixie, arm64).
+This repo is the Ansible source of truth for four FriendlyElec NanoPi hosts:
+three Zero2 boards and one R6S with 64 GB eMMC (Debian Trixie, arm64).
 Prefer executable configuration when documentation disagrees.
 `CLAUDE.md` is a relative symlink to this file; keep one source of instructions.
 
@@ -22,6 +22,7 @@ this file.
 | `hosts/tailgate/` | `tailgate.home.arpa`: Tailscale subnet router only |
 | `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL, model updater |
 | `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation and Docker only |
+| `hosts/acme/` | `acme.home.arpa`: Docker host for the ACME-DNS gateway workload |
 | `roles/bootstrap/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, final reboot |
 | `roles/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
 | `workloads/acme-dns-gateway/` | Homelab certification centre project |
@@ -62,7 +63,7 @@ and workload `.age` files. It rejects staged plaintext secret files.
 
 ```sh
 # Run from each affected host directory; roles/bootstrap changes affect all hosts.
-cd hosts/ai                    # or hosts/tailgate or hosts/media
+cd hosts/ai                    # or hosts/tailgate, hosts/media, or hosts/acme
 ansible-playbook --syntax-check site.yml
 ansible-lint site.yml  # if installed
 
@@ -123,6 +124,9 @@ Finish with `git diff --check` and review the changed files.
   image onto eMMC and remove the SD card before running `site.yml`. `site.yml` runs only
   the shared `docker` role with its `fuse-overlayfs` default; no applications
   are configured. Its vault contains only the root and pi passwords.
+- **ACME:** NanoPi Zero2. `site.yml` runs the `docker` role like AI and Media.
+  `make apply workload=acme-dns-gateway` deploys the gateway through the `acme`
+  Docker context. Its vault contains only the root and pi passwords.
 - **Tailgate:** enables IPv4/IPv6 forwarding and advertises `10.4.0.0/24`
   (management), `10.4.1.0/24` (trusted), and `10.4.4.0/24` (isolated). Route approval
   in the Tailscale admin console is a manual prerequisite for usable routing.
