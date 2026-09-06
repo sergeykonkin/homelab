@@ -31,7 +31,7 @@ def config_dict():
         "updates_per_minute": 2,
         "clients": [
             {
-                "hostname": "acme-gateway.example.com",
+                "hostname": "acme.example.com",
                 "username": "gateway-user-0001",
                 "password": "p" * 32,
                 "subdomain": "gateway-validation",

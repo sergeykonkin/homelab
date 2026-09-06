@@ -26,7 +26,7 @@ age --armor --encrypt \
 The gateway hostname has a permanent public challenge CNAME:
 
 ```text
-_acme-challenge.acme-gateway.example.com
+_acme-challenge.acme.example.com
   CNAME <gateway-subdomain>.acme.example.com
 ```
 
