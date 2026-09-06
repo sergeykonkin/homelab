@@ -2,6 +2,8 @@
 # Store the password separately in your password manager.
 .vault-pass
 workloads/*/.env
+workloads/*/secrets/*
+!workloads/*/secrets/*.example
 
 # Python
 __pycache__/

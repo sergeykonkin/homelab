@@ -23,6 +23,11 @@ def is_workload_file(path, filename):
     return len(parts) == 3 and parts[0] == "workloads" and parts[2] == filename
 
 
+def is_workload_secret(path):
+    parts = path.split("/")
+    return len(parts) == 4 and parts[0] == "workloads" and parts[2] == "secrets"
+
+
 def main():
     paths = git("ls-files", "--cached", "-z")
     rejected_plaintext = []
@@ -33,12 +38,20 @@ def main():
         if not raw_path:
             continue
         path = raw_path.decode("utf-8", errors="surrogateescape")
-        if path == ".vault-pass" or is_workload_file(path, ".env"):
+        if (
+            path == ".vault-pass"
+            or is_workload_file(path, ".env")
+            or (is_workload_secret(path) and not path.endswith((".age", ".example")))
+        ):
             rejected_plaintext.append(path)
         elif is_host_secret(path) and not path.endswith(".example"):
             if not git("show", f":{path}").startswith(VAULT_HEADER):
                 rejected_vault.append(path)
-        elif path == ".vault-pass.age" or is_workload_file(path, ".env.age"):
+        elif (
+            path == ".vault-pass.age"
+            or is_workload_file(path, ".env.age")
+            or (is_workload_secret(path) and path.endswith(".age"))
+        ):
             if not git("show", f":{path}").startswith(AGE_HEADER):
                 rejected_age.append(path)
 
@@ -60,7 +73,7 @@ def main():
     if rejected_plaintext or rejected_vault or rejected_age:
         print(
             "Use Ansible Vault for hosts/*/secrets/, age --armor for .vault-pass.age "
-            "and workloads/*/.env.age, and keep plaintext files out of Git.",
+            "and workload .age files, and keep plaintext files out of Git.",
             file=sys.stderr,
         )
         return 1

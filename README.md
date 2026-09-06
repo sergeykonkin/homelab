@@ -36,7 +36,8 @@ make apply workload=litellm
 ```
 
 [`workloads.yml`](workloads.yml) maps each workload to its permitted deployment
-hosts. When it lists one host, `make apply workload=<name>` selects it. When it
-lists several, pass `host=<name>` or `host=all`; `all` applies the workload to
-every permitted host. `make apply` reads the map with `yq`; hosts require Docker
-contexts prepared by `make init`.
+hosts and required decrypted files. When it lists one host,
+`make apply workload=<name>` selects it. When it lists several, pass
+`host=<name>` or `host=all`; `all` applies the workload to every permitted host.
+`make apply` reads the map with `yq` and drives the target's Docker daemon via
+a context prepared by `make init`.

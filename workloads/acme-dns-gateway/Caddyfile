@@ -1,0 +1,21 @@
+{
+	admin off
+	acme_ca {$ACME_CA}
+}
+
+{$GATEWAY_HOSTNAME} {
+	tls {
+		dns acmedns /run/secrets/caddy-acmedns.json
+		resolvers 1.1.1.1 1.0.0.1
+	}
+
+	@allowed_update {
+		path /update
+		method POST
+	}
+	handle @allowed_update {
+		reverse_proxy gateway:8080
+	}
+
+	respond 404
+}

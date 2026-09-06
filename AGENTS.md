@@ -24,6 +24,7 @@ this file.
 | `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation and Docker only |
 | `roles/bootstrap/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, final reboot |
 | `roles/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
+| `workloads/acme-dns-gateway/` | Homelab certification centre project |
 
 - Each host is an independent Ansible project: `ansible.cfg`, `inventory.ini`,
   `site.yml`, local `roles/`, and `secrets/`. There is no root
@@ -50,13 +51,14 @@ this file.
 ## Commands and validation
 
 Use the full `ansible` distribution with ansible-core >= 2.21
-(`brew install ansible`); `ansible-lint` is optional. There is no CI, test suite,
-dependency manifest, or top-level build command.
+(`brew install ansible`); `ansible-lint` is optional. There is no CI,
+dependency manifest, or top-level build command. The ACME-DNS gateway has a
+standard-library Python unit test suite under its workload directory.
 
 Run `make init` from the repo root to configure Git's local `core.hooksPath` as
 `hooks`. The Python 3 pre-commit hook requires an Ansible Vault header on indexed
-files under `hosts/*/secrets/`, an ASCII-armored age header on `.vault-pass.age`
-and `workloads/*/.env.age`, and rejects staged plaintext secret files.
+files under `hosts/*/secrets/` and an ASCII-armored age header on `.vault-pass.age`
+and workload `.age` files. It rejects staged plaintext secret files.
 
 ```sh
 # Run from each affected host directory; roles/bootstrap changes affect all hosts.
@@ -76,12 +78,15 @@ For updater edits, use `bash -n workloads/litellm/entrypoint.sh` and
 Python syntax validation from the repo root; exercise model parsing/config/hash
 behavior with fixtures and a temporary `CONFIG_DIR`, avoiding live API calls.
 The shell script requires Bash and GNU `date` inside its Linux container.
+For ACME-DNS gateway edits, run its Python unit tests, validate the Compose
+configuration with the example runtime values, and use `sh -n` for its host
+scripts.
 Finish with `git diff --check` and review the changed files.
 
 ## Secrets
 
 - `.vault-pass` is ignored and must never be committed or printed. `.vault-pass.age`
-  and workload `.env.age` files are ASCII-armored age ciphertext. All
+  and workload `.age` files are ASCII-armored age ciphertext. All
   `hosts/*/secrets/vault.yml` files **are tracked** and must start with
   `$ANSIBLE_VAULT;`. Plaintext vaults are **not** protected by `.gitignore`.
   Check encryption before staging any vault.
@@ -90,9 +95,9 @@ Finish with `git diff --check` and review the changed files.
   one over an existing vault as a routine setup step or expose decrypted values
   in logs, diffs, or replies.
 - All vaults contain `vault_root_pw` and `vault_pi_pw`; Tailgate also has
-  `vault_tailscale_authkey`. Workload secrets are stored in their workload's
-  `.env.age` file. Preserve `no_log: true` on secret-bearing tasks and keep
-  generated credentials and config out of Git.
+  `vault_tailscale_authkey`. Workload secrets use encrypted `.age` counterparts;
+  plaintext files remain ignored and untracked. Preserve `no_log: true` on
+  secret-bearing tasks and keep generated credentials and config out of Git.
 
 ## Bootstrap and Docker invariants
 

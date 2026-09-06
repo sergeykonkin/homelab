@@ -1,5 +1,13 @@
 # Allowed deployment hosts, keyed by Compose workload.
 workloads:
+  acme-dns-gateway:
+    allowed_hosts: []
+    required_files:
+      - .env
+      - secrets/gateway.json
+      - secrets/caddy-acmedns.json
   litellm:
     allowed_hosts:
       - ai
+    required_files:
+      - .env

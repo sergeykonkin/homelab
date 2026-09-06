@@ -1,0 +1,83 @@
+name: acme-dns-gateway
+
+services:
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    container_name: acme-dns-gateway-caddy
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      ACME_CA: "${ACME_CA:?set ACME_CA}"
+      GATEWAY_HOSTNAME: "${GATEWAY_HOSTNAME:?set GATEWAY_HOSTNAME}"
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    secrets:
+      - source: caddy_acmedns
+        target: caddy-acmedns.json
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      - backend
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: ./backend
+    container_name: acme-dns-gateway
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      GATEWAY_CONFIG: /run/secrets/gateway.json
+      GATEWAY_LISTEN_HOST: 0.0.0.0
+      GATEWAY_LISTEN_PORT: "8080"
+    secrets:
+      - source: gateway_config
+        target: gateway.json
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    networks:
+      - backend
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  backend:
+    name: acme_dns_gateway_backend
+
+volumes:
+  caddy_data:
+    name: acme_dns_gateway_caddy_data
+  caddy_config:
+    name: acme_dns_gateway_caddy_config
+
+secrets:
+  caddy_acmedns:
+    file: ./secrets/caddy-acmedns.json
+  gateway_config:
+    file: ./secrets/gateway.json

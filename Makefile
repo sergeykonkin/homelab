@@ -9,11 +9,11 @@ init: hooks decrypt-secrets docker-contexts ## Prepare local secrets, Git hooks,
 hooks: ## Configure the repository Git hooks
 	git config --local core.hooksPath hooks
 
-decrypt-secrets: ## Decrypt the vault password and workload environments
+decrypt-secrets: ## Decrypt the vault password and workload secret files
 	@command -v age >/dev/null || { echo "age is required" >&2; exit 1; }
 	@test -f "$(AGE_IDENTITY)" || { echo "age identity not found: $(AGE_IDENTITY)" >&2; exit 1; }
 	@set -eu; \
-	for encrypted in .vault-pass.age workloads/*/.env.age; do \
+	for encrypted in .vault-pass.age workloads/*/.env.age workloads/*/secrets/*.age; do \
 		[ -f "$$encrypted" ] || continue; \
 		target=$${encrypted%.age}; \
 		temporary=$$(mktemp "$${target}.XXXXXX"); \
@@ -43,12 +43,15 @@ docker-contexts: ## Create or update Docker contexts for managed Docker hosts
 apply: ## Build and apply a workload; pass workload=<name> [host=<name>|all]
 	@test -n "$(workload)" || { echo "usage: make apply workload=<workload> [host=<host>|all]" >&2; exit 1; }
 	@test -f "workloads/$(workload)/compose.yaml" || { echo "unknown workload: $(workload)" >&2; exit 1; }
-	@test -f "workloads/$(workload)/.env" || { echo "run make init before applying $(workload)" >&2; exit 1; }
 	@command -v yq >/dev/null || { echo "yq is required" >&2; exit 1; }
 	@set -eu; \
 	workload_dir="workloads/$(workload)"; \
 	allowed_hosts=$$(WORKLOAD_NAME="$(workload)" yq -r '(.workloads[strenv(WORKLOAD_NAME)].allowed_hosts // [])[]' workloads.yml | tr '\n' ' '); \
+	required_files=$$(WORKLOAD_NAME="$(workload)" yq -r '(.workloads[strenv(WORKLOAD_NAME)].required_files // [".env"])[]' workloads.yml); \
 	test -n "$$allowed_hosts" || { echo "no deployment hosts configured for $(workload)" >&2; exit 1; }; \
+	for required_file in $$required_files; do \
+		test -f "$$workload_dir/$$required_file" || { echo "run make init before applying $(workload): missing $$required_file" >&2; exit 1; }; \
+	done; \
 	if [ -z "$(host)" ]; then \
 		set -- $$allowed_hosts; \
 		[ "$$#" -eq 1 ] || { echo "$(workload) has multiple allowed hosts; pass host=<host> or host=all (allowed: $$allowed_hosts)" >&2; exit 1; }; \
