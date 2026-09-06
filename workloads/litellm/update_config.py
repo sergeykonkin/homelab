@@ -13,6 +13,24 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "config.yaml")
 HASH_PATH = os.path.join(CONFIG_DIR, "config.yaml.sha256sum")
 
 
+def is_text_model(modality: str) -> bool:
+    """Return True when a model accepts text input and produces text output.
+
+    The modality string has the form ``input1+input2->output1+output2``.
+    A model is included when ``text`` is among its input modalities and the
+    only output modality is ``text`` -- so ``text->text`` and
+    ``text+image->text`` qualify, while image-generation models such as
+    ``text->text+image`` and non-text-input models such as ``audio->text``
+    do not.
+    """
+    if not modality or "->" not in modality:
+        return False
+    left, _, right = modality.partition("->")
+    inputs = {part.strip() for part in left.split("+") if part.strip()}
+    outputs = {part.strip() for part in right.split("+") if part.strip()}
+    return "text" in inputs and outputs == {"text"}
+
+
 def fetch_models(api_key: str) -> list[dict]:
     req = urllib.request.Request(
         f"{API_BASE}models?verbose=1",
@@ -41,7 +59,7 @@ def fetch_models(api_key: str) -> list[dict]:
 
     return [
         m for m in data["data"]
-        if m.get("architecture", {}).get("modality") == "text->text"
+        if is_text_model(m.get("architecture", {}).get("modality", ""))
     ]
 
 
