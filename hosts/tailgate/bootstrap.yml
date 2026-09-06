@@ -12,4 +12,3 @@
   import_playbook: ../../roles/bootstrap/playbook.yml
   vars:
     bootstrap_inventory_group: tailgate_hosts
-    bootstrap_vault_file: "{{ playbook_dir }}/secrets/vault.yml"

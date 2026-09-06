@@ -10,6 +10,11 @@
 
 # --- Hostname --------------------------------------------------------------
 
+- name: Load bootstrap vault
+  ansible.builtin.include_vars:
+    file: "{{ inventory_dir }}/secrets/vault.yml"
+  no_log: true
+
 - name: Check whether bootstrap completed
   ansible.builtin.stat:
     path: /var/lib/homelab/bootstrap-complete

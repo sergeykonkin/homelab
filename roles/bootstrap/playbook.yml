@@ -8,7 +8,6 @@
   connection: local
   vars_files:
     - vars/main.yml
-    - "{{ bootstrap_vault_file | default('/dev/null') }}"
   tasks:
     - name: Check root public-key access
       ansible.builtin.command:
@@ -41,11 +40,10 @@
           {{ '-o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o BatchMode=yes'
              if bootstrap_root_key_access.rc == 0
              else '-o PreferredAuthentications=password -o PubkeyAuthentication=no' }}
+      changed_when: false
 
 - name: Bootstrap configuration
   hosts: bootstrap_targets
   become: true
-  vars_files:
-    - "{{ bootstrap_vault_file | default('/dev/null') }}"
   roles:
     - bootstrap
