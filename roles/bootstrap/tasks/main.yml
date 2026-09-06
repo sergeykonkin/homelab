@@ -162,3 +162,8 @@
     reboot_timeout: 300
     test_command: whoami
   when: not bootstrap_complete_marker.stat.exists or bootstrap_apt_upgrade.changed
+  vars:
+    ansible_user: root
+    ansible_password: ""
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_ssh_extra_args: "-o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o BatchMode=yes"
