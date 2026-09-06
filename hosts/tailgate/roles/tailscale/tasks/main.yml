@@ -64,9 +64,9 @@
     enabled: true
 
 # --- Bring the node up as a subnet router ----------------------------------
-# Reapply the advertised routes with --reset=false and --accept-routes. This
-# task does not inspect the previous preferences and always reports changed.
-# --accept-routes lets this node honor routes advertised by other nodes.
+# `tailscale debug prefs` exposes the node preferences used to report whether
+# `tailscale up` changes the configured state. --accept-routes lets this node
+# honor routes advertised by other nodes.
 #
 # The advertised routes must be APPROVED in the Tailscale admin console
 # (one-time, manual). The playbook advertises them; approval makes them usable
@@ -75,6 +75,21 @@
 - name: Compose advertised routes argument
   ansible.builtin.set_fact:
     tailscale_routes_arg: "{{ tailscale_advertise_routes | join(',') }}"
+
+- name: Read Tailscale preferences
+  ansible.builtin.command:
+    argv:
+      - tailscale
+      - debug
+      - prefs
+  register: tailscale_prefs_result
+  changed_when: false
+  failed_when: false
+
+- name: Parse Tailscale preferences
+  ansible.builtin.set_fact:
+    tailscale_prefs: "{{ tailscale_prefs_result.stdout | from_json }}"
+  when: tailscale_prefs_result.rc == 0
 
 - name: Bring Tailscale up as a subnet router
   ansible.builtin.command:
@@ -86,8 +101,11 @@
       - --reset=false
       - --accept-routes
   register: tailscale_up_result
-  # Report changed unconditionally; any non-zero exit is a failure.
-  changed_when: true
+  changed_when: >-
+    tailscale_prefs_result.rc != 0 or
+    not (tailscale_prefs.WantRunning | default(false) | bool) or
+    not (tailscale_prefs.RouteAll | default(false) | bool) or
+    (tailscale_prefs.AdvertiseRoutes | default([]) | sort != tailscale_advertise_routes | sort)
   failed_when: tailscale_up_result.rc != 0
   no_log: true  # auth key is in the command
 

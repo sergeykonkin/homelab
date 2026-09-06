@@ -58,7 +58,8 @@ ansible-playbook site.yml
 This installs Tailscale, enables IP forwarding, and runs
 `tailscale up --advertise-routes=10.4.0.0/24,10.4.1.0/24,10.4.4.0/24 --auth-key=…`
 with `--reset=false`, `--accept-routes`, and auto-update enabled. The `tailscale up`
-task always reports changed. Setting `tailscale_auto_update: false` skips the
+task runs when its advertised routes, route acceptance, or running state differs
+from the configured values and otherwise reports `ok`. Setting `tailscale_auto_update: false` skips the
 enable task; it does not disable an already-enabled preference. The
 `tailscale_exit_node` default is unused by the tasks.
 
