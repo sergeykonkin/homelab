@@ -11,10 +11,12 @@ run_update() {
         if [[ -f /app/config/config.yaml.sha256sum ]]; then
             new_sha="$(cat /app/config/config.yaml.sha256sum)"
         fi
-        if [[ -z "$OLD_SHA" ]]; then
-            echo "$(date): Initial config built"
-        elif [[ "$OLD_SHA" != "$new_sha" ]]; then
-            echo "$(date): Config changed"
+        if [[ "$OLD_SHA" != "$new_sha" ]]; then
+            if [[ -z "$OLD_SHA" ]]; then
+                echo "$(date): Initial config built"
+            else
+                echo "$(date): Config changed"
+            fi
             if [[ "$should_restart" == "true" ]]; then
                 echo "$(date): Restarting litellm..."
                 docker restart litellm
@@ -32,7 +34,7 @@ if [[ -f /app/config/config.yaml.sha256sum ]]; then
     OLD_SHA="$(cat /app/config/config.yaml.sha256sum)"
 fi
 
-run_update false
+run_update true
 
 while true; do
     NOW_EPOCH=$(date +%s)

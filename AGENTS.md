@@ -140,12 +140,14 @@ Finish with `git diff --check` and review the changed files.
   start allowance. The cert bind mount hardcodes `/opt/litellm/certs`; changing
   role deployment-path defaults alone does not relocate the entire stack.
 - `update_config.py` uses only the Python standard library. It fetches Nebius
-  `models?verbose=1`, filters `text->text`, writes model names/provider IDs/pricing
+  `models?verbose=1`, filters models that accept text input and produce text
+  output (`text->text` and `text+image->text`; not `text->embedding` or
+  `text->text+image`), writes model names/provider IDs/pricing
   plus `drop_params: true`, and uses SHA-256 to skip unchanged writes.
   `config.yaml` and its hash are generated in the shared volume, not deployed
-  from Git. `entrypoint.sh` creates the directory, updates at startup without
-  restarting LiteLLM, then runs daily at 04:20 in the container's timezone and
-  restarts `litellm` when an existing hash changes. Preserve this startup ordering.
+  from Git. `entrypoint.sh` creates the directory, updates at startup, then
+  runs daily at 04:20 in the container's timezone. It restarts `litellm` on any
+  config change, including the initial build. Preserve this startup ordering.
 - The updater's Docker socket mount is marked `:ro` and permits Docker
   API mutations (including its restart command); treat it as privileged access.
   `open-webui` and a shared external Docker network are planned, not implemented.
