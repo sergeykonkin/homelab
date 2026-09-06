@@ -47,7 +47,7 @@ apply: ## Build and apply a workload; pass WORKLOAD=<name>
 	@test -f "workloads/$(WORKLOAD)/.env" || { echo "run make init before applying $(WORKLOAD)" >&2; exit 1; }
 	@set -eu; \
 	workload_dir="workloads/$(WORKLOAD)"; \
-	context=$$(sed -n 's/^CONTEXT[[:space:]]*:?=[[:space:]]*//p' "$$workload_dir/workload.mk"); \
+	context=$$(sed -nE 's/^CONTEXT[[:space:]]*:?[[:space:]]*=[[:space:]]*//p' "$$workload_dir/workload.mk"); \
 	test -n "$$context" || { echo "missing CONTEXT in $$workload_dir/workload.mk" >&2; exit 1; }; \
 	docker --context "$$context" compose --env-file "$$workload_dir/.env" --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build
 
