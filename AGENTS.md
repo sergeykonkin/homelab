@@ -23,7 +23,7 @@ runs services configured manually on the box.
 - Each host is an independent Ansible project: `ansible.cfg`, `inventory.ini`,
   `firstboot.yml`, `site.yml`, local `roles/`, and `secrets/`. There is no root
   inventory or root playbook. Run Ansible **inside `hosts/<name>/`** so its config
-  resolves `../../shared:./roles` and `../../.vault-pass` correctly.
+  resolves `../../roles:./roles` and `../../.vault-pass` correctly.
 - Keep new roles local until a second host needs them, then move them to
   `roles/`; playbooks reference role names. For a new host, follow the existing
   project layout and update the root host table and host README.
@@ -50,7 +50,8 @@ dependency manifest, or top-level build command.
 
 Run `make init` from the repo root to configure Git's local `core.hooksPath` as
 `hooks`. The Python 3 pre-commit hook requires an Ansible Vault header on indexed
-files under `hosts/*/secrets/`, excluding `.example` templates.
+files under `hosts/*/secrets/`, an ASCII-armored age header on `.vault-pass.age`
+and `workloads/*/.env.age`, and rejects staged plaintext secret files.
 
 ```sh
 # Run from each affected host directory; roles/firstboot changes affect all hosts.
@@ -68,7 +69,7 @@ Syntax checks use the configured vault password without contacting the hosts.
 They do not verify runtime behavior. `--check` is not a complete deployment
 simulation: command tasks, password-hash results, and generated files depend on
 real execution. Do not run live provisioning merely to validate repository edits.
-For updater edits, use `bash -n hosts/ai/roles/litellm/files/entrypoint.sh` and
+For updater edits, use `bash -n workloads/litellm/entrypoint.sh` and
 Python syntax validation from the repo root; exercise model parsing/config/hash
 behavior with fixtures and a temporary `CONFIG_DIR`, avoiding live API calls.
 The shell script requires Bash and GNU `date` inside its Linux container.
@@ -76,7 +77,8 @@ Finish with `git diff --check` and review the changed files.
 
 ## Secrets
 
-- `.vault-pass` is ignored and must never be committed or printed. All
+- `.vault-pass` is ignored and must never be committed or printed. `.vault-pass.age`
+  and workload `.env.age` files are ASCII-armored age ciphertext. All
   `hosts/*/secrets/vault.yml` files **are tracked** and must start with
   `$ANSIBLE_VAULT;`. Plaintext vaults are **not** protected by `.gitignore`.
   Check encryption before staging any vault.
@@ -84,12 +86,10 @@ Finish with `git diff --check` and review the changed files.
   secrets. The `.example` files define the schema with placeholders; never copy
   one over an existing vault as a routine setup step or expose decrypted values
   in logs, diffs, or replies.
-- All vaults contain `vault_root_pw` and `vault_pi_pw`. Tailgate also has
-  `vault_tailscale_authkey`; ai has `vault_nebius_api_key`,
-  `vault_litellm_master_key`, `vault_postgres_password`, `vault_tls_crt`, and
-  `vault_tls_key`. Keep the TLS certificate/key pair together during rotation.
-- Preserve `no_log: true` on secret-bearing tasks and mode `0600` on the deployed
-  `.env` and TLS private key. Keep generated credentials and config out of Git.
+- All vaults contain `vault_root_pw` and `vault_pi_pw`; Tailgate also has
+  `vault_tailscale_authkey`. Workload secrets are stored in their workload's
+  `.env.age` file. Preserve `no_log: true` on secret-bearing tasks and keep
+  generated credentials and config out of Git.
 
 ## Bootstrap and Docker invariants
 

@@ -1,31 +1,66 @@
 #!/usr/bin/env python3
-"""Require Ansible Vault headers on indexed host secrets."""
+"""Require encrypted secret files in the Git index."""
 
 import subprocess
 import sys
+
+
+AGE_HEADER = b"-----BEGIN AGE ENCRYPTED FILE-----"
+VAULT_HEADER = b"$ANSIBLE_VAULT;"
 
 
 def git(*args):
     return subprocess.check_output(["git", *args], stderr=subprocess.PIPE)
 
 
+def is_host_secret(path):
+    parts = path.split("/")
+    return len(parts) >= 4 and parts[0] == "hosts" and parts[2] == "secrets"
+
+
+def is_workload_file(path, filename):
+    parts = path.split("/")
+    return len(parts) == 3 and parts[0] == "workloads" and parts[2] == filename
+
+
 def main():
-    paths = git("ls-files", "--cached", "-z", "--", "hosts/*/secrets/*")
-    rejected = []
+    paths = git("ls-files", "--cached", "-z")
+    rejected_plaintext = []
+    rejected_vault = []
+    rejected_age = []
+
     for raw_path in paths.split(b"\0"):
-        if not raw_path or raw_path.endswith(b".example"):
+        if not raw_path:
             continue
         path = raw_path.decode("utf-8", errors="surrogateescape")
-        if not git("show", f":{path}").startswith(b"$ANSIBLE_VAULT;"):
-            rejected.append(path)
+        if path == ".vault-pass" or is_workload_file(path, ".env"):
+            rejected_plaintext.append(path)
+        elif is_host_secret(path) and not path.endswith(".example"):
+            if not git("show", f":{path}").startswith(VAULT_HEADER):
+                rejected_vault.append(path)
+        elif path == ".vault-pass.age" or is_workload_file(path, ".env.age"):
+            if not git("show", f":{path}").startswith(AGE_HEADER):
+                rejected_age.append(path)
 
-    if rejected:
-        print("Commit blocked: staged secrets must be Ansible Vault encrypted:", file=sys.stderr)
-        for path in rejected:
+    if rejected_plaintext:
+        print("Commit blocked: staged plaintext secret files are not allowed:", file=sys.stderr)
+        for path in rejected_plaintext:
             print(f"  {path!r}", file=sys.stderr)
+
+    if rejected_vault:
+        print("Commit blocked: staged host secrets must be Ansible Vault encrypted:", file=sys.stderr)
+        for path in rejected_vault:
+            print(f"  {path!r}", file=sys.stderr)
+
+    if rejected_age:
+        print("Commit blocked: staged workload secrets must be ASCII-armored age files:", file=sys.stderr)
+        for path in rejected_age:
+            print(f"  {path!r}", file=sys.stderr)
+
+    if rejected_plaintext or rejected_vault or rejected_age:
         print(
-            "Encrypt these files with ansible-vault from their host directory, "
-            "then stage the encrypted files again. Plaintext templates must end in .example.",
+            "Use Ansible Vault for hosts/*/secrets/, age --armor for .vault-pass.age "
+            "and workloads/*/.env.age, and keep plaintext files out of Git.",
             file=sys.stderr,
         )
         return 1

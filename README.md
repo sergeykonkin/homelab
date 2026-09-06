@@ -63,12 +63,11 @@ vaults when reprovisioning; use `ansible-vault edit secrets/vault.yml` from the
 host directory to update values. Plaintext `vault.yml` files are **not ignored**:
 verify the `$ANSIBLE_VAULT;` header before staging any vault.
 
-The pre-commit hook checks the Git index for every file under
-`hosts/*/secrets/`, except plaintext `.example` templates. It blocks commits if
-any of these files lacks the `$ANSIBLE_VAULT;` header, without printing their
-contents. Encrypt files from their host directory with `ansible-vault encrypt`,
-then stage the encrypted files again. The hook checks the header only; it does
-not decrypt or authenticate vault contents.
+The pre-commit hook checks the Git index for Ansible Vault headers under
+`hosts/*/secrets/`, except plaintext `.example` templates. It also requires the
+ASCII age header on `.vault-pass.age` and `workloads/*/.env.age`, and rejects
+staged plaintext `.vault-pass` and workload `.env` files. It checks headers
+only and does not decrypt or authenticate encrypted contents.
 
 ## Setting up a host
 
