@@ -3,6 +3,7 @@
 .vault-pass
 workloads/*/.env
 workloads/*/secrets/*
+!workloads/*/secrets/*.age
 !workloads/*/secrets/*.example
 
 # Python
