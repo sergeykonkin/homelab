@@ -1,5 +1,5 @@
 ---
-# shared/firstboot — one-time bootstrap of a freshly-burned NanoPi host.
+# roles/firstboot — one-time bootstrap of a freshly-burned NanoPi host.
 # Run via the per-host firstboot.yml, which connects with the default image
 # credential (pi:pi) and becomes root via sudo (password: pi) before this role
 # changes it.

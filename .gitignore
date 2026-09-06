@@ -1,6 +1,7 @@
 # Local vault password file — never commit it.
 # Store the password separately in your password manager.
 .vault-pass
+workloads/*/.env
 
 # Python
 __pycache__/

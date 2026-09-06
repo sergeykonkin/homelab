@@ -20,7 +20,7 @@ No application containers are configured.
 3. **Prepare the control machine** using the
    [root README](../../README.md#bootstrap-one-time-on-a-new-machine), including
    the vault password and private key matching `firstboot_pubkey` in
-   `shared/firstboot/vars/main.yml`. The encrypted vault contains independent
+   `roles/firstboot/vars/main.yml`. The encrypted vault contains independent
    random root and `pi` passwords. To edit them:
    ```bash
    cd hosts/media
@@ -71,8 +71,8 @@ the schema in `secrets/vault.yml.example` with strong passwords.
 ## Files
 
 - `ansible.cfg`, `inventory.ini` — host configuration for `media.home.arpa`
-- `firstboot.yml` — one-time bootstrap using `shared/firstboot`
-- `site.yml` — repeatable setup using `shared/docker`
+- `firstboot.yml` — one-time bootstrap using `roles/firstboot`
+- `site.yml` — repeatable setup using `roles/docker`
 - `roles/` — directory for host-specific roles
 - `secrets/vault.yml` — encrypted root and `pi` passwords
 - `secrets/vault.yml.example` — plaintext schema with placeholders

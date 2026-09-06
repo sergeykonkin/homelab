@@ -17,22 +17,22 @@ runs services configured manually on the box.
 | `hosts/tailgate/` | `tailgate.home.arpa`: Tailscale subnet router only |
 | `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL, model updater |
 | `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation, firstboot and Docker only |
-| `shared/firstboot/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, reboot |
-| `shared/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
+| `roles/firstboot/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, reboot |
+| `roles/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
 
 - Each host is an independent Ansible project: `ansible.cfg`, `inventory.ini`,
   `firstboot.yml`, `site.yml`, local `roles/`, and `secrets/`. There is no root
   inventory or root playbook. Run Ansible **inside `hosts/<name>/`** so its config
   resolves `../../shared:./roles` and `../../.vault-pass` correctly.
 - Keep new roles local until a second host needs them, then move them to
-  `shared/`; playbooks reference role names. For a new host, follow the existing
+  `roles/`; playbooks reference role names. For a new host, follow the existing
   project layout and update the root host table and host README.
 - Inventory groups use `<name>_hosts` to avoid host/group name collisions.
   Steady-state access is root over SSH keys; Python is `/usr/bin/python3`.
 - Follow existing YAML style: two-space indentation, named tasks, fully qualified
   module names, quoted file modes, role-prefixed variables, and `vault_` secrets.
   Put tunables in role defaults; existing firstboot settings/key live in
-  `shared/firstboot/vars/main.yml` (higher precedence than defaults).
+  `roles/firstboot/vars/main.yml` (higher precedence than defaults).
 - Keep repeatable setup convergent, use handlers for service configuration, and
   give command/shell tasks deliberate change/failure reporting. Update README
   instructions and vault examples when changing their interfaces.
@@ -53,7 +53,7 @@ Run `make init` from the repo root to configure Git's local `core.hooksPath` as
 files under `hosts/*/secrets/`, excluding `.example` templates.
 
 ```sh
-# Run from each affected host directory; shared/firstboot changes affect all hosts.
+# Run from each affected host directory; roles/firstboot changes affect all hosts.
 cd hosts/ai                    # or hosts/tailgate or hosts/media
 ansible-playbook --syntax-check firstboot.yml
 ansible-playbook --syntax-check site.yml

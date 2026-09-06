@@ -1,9 +1,5 @@
-# Managed by homelab hosts/ai/roles/litellm — do not edit on the host.
-# Templated from docker-compose.yml.j2. The role also writes, from the host
-# vault: .env (3 app vars) and certs/tls.{crt,key} in the deploy dir.
-#
-# No shared external Docker network is configured. When open-webui is added, give both apps a
-# shared external network then.
+name: litellm
+
 services:
   litellm:
     image: docker.litellm.ai/berriai/litellm:main-stable
@@ -11,13 +7,10 @@ services:
     restart: unless-stopped
     volumes:
       - config:/app/config:ro
-      - /opt/litellm/certs:/app/certs:ro
     command:
       - "--config=/app/config/config.yaml"
-      - "--ssl_certfile_path=/app/certs/tls.crt"
-      - "--ssl_keyfile_path=/app/certs/tls.key"
     ports:
-      - "443:4000"
+      - "4000:4000"
     environment:
       DATABASE_URL: "postgresql://llmproxy:${POSTGRES_PASSWORD}@db:5432/litellm"
       STORE_MODEL_IN_DB: "True"
@@ -31,14 +24,10 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - python3 -c "import urllib.request,ssl; ctx=ssl.create_default_context(); ctx.check_hostname=False; ctx.verify_mode=ssl.CERT_NONE; urllib.request.urlopen('https://localhost:4000/health/liveliness',context=ctx)"
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
       interval: 30s
       timeout: 10s
       retries: 3
-      # Cold startup runs database migrations before the proxy binds :4000.
-      # The 300-second grace period accommodates this startup work.
-      # After the grace period, three failed checks mark the
-      # container unhealthy; the interval is 30 seconds and timeout 10 seconds.
       start_period: 300s
 
   models-updater:
@@ -51,7 +40,6 @@ services:
       NEBIUS_API_KEY: "${NEBIUS_API_KEY}"
       CONFIG_DIR: "/app/config"
     volumes:
-      # :ro does not restrict Docker API calls; the updater can restart containers.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - config:/app/config
     healthcheck:
@@ -75,9 +63,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
-      # Postgres can take tens of seconds to initialize its data directory on
-      # first boot on arm64/overlayfs. Give it a generous grace period before
-      # failures count as unhealthy.
       start_period: 120s
 
 volumes:

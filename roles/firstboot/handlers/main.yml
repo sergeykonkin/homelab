@@ -1,5 +1,5 @@
 ---
-# shared/firstboot handlers
+# roles/firstboot handlers
 
 - name: Restart journald
   ansible.builtin.systemd_service:

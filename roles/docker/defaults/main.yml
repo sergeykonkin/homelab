@@ -1,0 +1,10 @@
+---
+# roles/docker defaults
+
+# The NanoPi Zero2 root filesystem is itself an overlayfs (overlay-root).
+# Docker's default `overlay2` driver fails to nest on it, so we force
+# fuse-overlayfs.
+docker_storage_driver: fuse-overlayfs
+
+# No shared external Docker network is created. Ingress workloads create any
+# shared external network required by Compose workloads on the host.

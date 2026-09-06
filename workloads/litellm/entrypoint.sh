@@ -32,10 +32,8 @@ if [[ -f /app/config/config.yaml.sha256sum ]]; then
     OLD_SHA="$(cat /app/config/config.yaml.sha256sum)"
 fi
 
-# Build initial config without restarting LiteLLM; Compose handles startup.
 run_update false
 
-# Sleep until next 04:20 in the container's timezone (GNU date required).
 while true; do
     NOW_EPOCH=$(date +%s)
     TARGET=$(date -d "$(date +%Y-%m-%d) 04:20:00" +%s)

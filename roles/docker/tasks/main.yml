@@ -1,5 +1,5 @@
 ---
-# shared/docker — install Docker + compose plugin and configure fuse-overlayfs
+# roles/docker — install Docker + compose plugin and configure fuse-overlayfs
 # (the default overlay2 driver won't nest on the NanoPi's overlay-root).
 
 # fuse-overlayfs needs the fuse-overlayfs binary + fuse support in kernel.

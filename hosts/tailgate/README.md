@@ -79,7 +79,7 @@ unattended. It may get a new `100.x` Tailscale IP unless you preserve state.
 
 - `ansible.cfg` — per-host ansible config (roles_path, vault pass)
 - `inventory.ini` — `tailgate` host + `base_hostname` var
-- `firstboot.yml` — one-time bootstrap (uses `shared/firstboot`)
+- `firstboot.yml` — one-time bootstrap (uses `roles/firstboot`)
 - `site.yml` — real setup (uses the colocated `tailscale` role)
 - `roles/tailscale/` — Tailscale install + subnet-router bring-up
 - `secrets/vault.yml` — encrypted: `vault_root_pw`, `vault_pi_pw`, `vault_tailscale_authkey`

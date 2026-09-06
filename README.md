@@ -4,15 +4,15 @@ Single source of truth for the hosts on my home network. Each host lives in its
 own folder under `hosts/<name>/` and is provisioned with **Ansible**, with manual
 prereqs (installing the OS on SD or eMMC) documented in that host's `README.md`.
 Host secrets are encrypted at rest with **ansible-vault**. Reprovisioning needs
-a fresh `git clone`, the vault password, and the SSH private key matching the
-public key configured in `shared/firstboot/vars/main.yml`.
+a fresh `git clone`, the age identity at `~/.age/age.key`, and the SSH private
+key matching the public key configured in `roles/firstboot/vars/main.yml`.
 
 ## Hosts
 
 | Host | Hardware | Role | Folder |
 |------|----------|------|--------|
 | `tailgate.home.arpa` | FriendlyElec NanoPi Zero2 (arm64) | Tailscale subnet router (`10.4.0.0/24`, `10.4.1.0/24`, `10.4.4.0/24`) | [`hosts/tailgate/`](hosts/tailgate/) |
-| `ai.home.arpa` | FriendlyElec NanoPi Zero2 (arm64) | LiteLLM proxy app (serving `litellm.home.arpa` on :443); `open-webui` planned | [`hosts/ai/`](hosts/ai/) |
+| `ai.home.arpa` | FriendlyElec NanoPi Zero2 (arm64) | Docker host for the LiteLLM workload | [`hosts/ai/`](hosts/ai/) |
 | `media.home.arpa` | FriendlyElec NanoPi R6S (arm64, 64 GB eMMC) | Docker host | [`hosts/media/`](hosts/media/) |
 
 ## Unmanaged hosts
@@ -25,35 +25,36 @@ the box.
 
 ```
 homelab/
-├── shared/                  # cross-host roles (promoted here when used by 2+ hosts)
+├── roles/                   # cross-host roles (promoted here when used by 2+ hosts)
 │   ├── firstboot/          #   one-time bootstrap: passwords, pubkey, hostname, journald, apt, sshd harden, reboot
-│   └── docker/             #   docker + fuse-overlayfs (NanoPi overlay-root needs it)
-└── hosts/
-    └── <name>/             # self-contained: ansible.cfg, inventory.ini, firstboot.yml, site.yml, roles/, secrets/
+│   └── docker/             #   Docker + fuse-overlayfs (NanoPi overlay-root needs it)
+├── hosts/
+│   └── <name>/             # self-contained: ansible.cfg, inventory.ini, firstboot.yml, site.yml, roles/, secrets/
+└── workloads/
+    └── <name>/             # Compose workload, encrypted environment, deployment metadata
 ```
 
 Each host folder is an independent Ansible project — `cd` into it and run a
 playbook. There is no top-level inventory; `ls hosts/` is the list of hosts.
 
-Roles start **colocated** in `hosts/<name>/roles/` and are promoted to `shared/`
+Roles start **colocated** in `hosts/<name>/roles/` and are promoted to `roles/`
 only once a second host needs them (a pure `git mv` — playbooks reference roles
 by name, not path).
 
 ## Bootstrap (one-time, on a new machine)
 
 One ansible-vault password decrypts all tracked
-`hosts/<name>/secrets/vault.yml` files. Keep that password and your SSH private
-key outside the repo.
+`hosts/<name>/secrets/vault.yml` files. `.vault-pass.age` stores that password
+encrypted to the age identity; keep the age identity and SSH private key outside
+the repository.
 
 1. `git clone` this repo, enter its directory, and run `make init` to configure
    Git to use the tracked `hooks/` directory.
-2. Put your vault password (from your password manager) into `.vault-pass`:
-   ```bash
-   echo -n 'your-vault-password' > .vault-pass   # no trailing newline
-   ```
-   `.vault-pass` is gitignored — never commit it.
+2. Install `age` and make `~/.age/age.key` available. It decrypts the tracked
+   `.vault-pass.age` file into the ignored local `.vault-pass` file during
+   `make init`.
 3. Make the SSH private key matching `firstboot_pubkey` in
-   `shared/firstboot/vars/main.yml` available to SSH (via a default identity,
+   `roles/firstboot/vars/main.yml` available to SSH (via a default identity,
    SSH config, or an agent). Firstboot needs it to reconnect as root after reboot;
    subsequent playbooks use it for root access.
 
@@ -84,8 +85,8 @@ Each host has **two playbooks**:
   ansible-playbook firstboot.yml -e ansible_host=<DHCP-IP>
   ```
 
-- **`site.yml`** — run *anytime after firstboot* to install the host's actual
-  purpose (Tailscale on tailgate; Docker + LiteLLM app on ai; Docker on media).
+- **`site.yml`** — run *anytime after firstboot* to apply host configuration
+  (Tailscale on tailgate; Docker on ai and media).
   Re-runnable; converges the host to the desired state.
   ```bash
   cd hosts/<name>
@@ -97,8 +98,35 @@ See each host's `README.md` for the full setup walkthrough.
 ## Tooling on the control machine
 
 - `make` and Python 3 — `make init` configures the repository's pre-commit hook,
-  which runs with `python3`.
+  decrypts local workload environments, configures Docker contexts, and runs with
+  `python3`.
 - `ansible` (ansible-core ≥ 2.21) — `brew install ansible`. `firstboot.yml`
   connects to a fresh host with the default image password over SSH; ansible-core
   ≥ 2.19 handles password auth natively (no extra tooling required).
 - `ansible-lint` (optional) — `brew install ansible-lint`
+- `age` — decrypts `.vault-pass.age` and workload `.env.age` files using
+  `~/.age/age.key`.
+- Docker CLI with Compose and SSH support — applies workloads through Docker
+  contexts.
+
+## Workloads
+
+Ansible configures hosts only. Compose workloads are applied from the control
+machine through a Docker context.
+
+Run the one-time local setup after cloning:
+
+```bash
+make init
+```
+
+It sets Git's local hooks path, decrypts `.vault-pass.age` and all workload
+`.env.age` files, and creates Docker contexts for `ai` and `media`. Plaintext
+`.vault-pass` and workload `.env` files are local, mode `0600`, and ignored by
+Git.
+
+Apply a workload by name:
+
+```bash
+make apply WORKLOAD=litellm
+```

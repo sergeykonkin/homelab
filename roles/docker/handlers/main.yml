@@ -1,5 +1,5 @@
 ---
-# shared/docker handlers
+# roles/docker handlers
 
 - name: Restart docker
   ansible.builtin.systemd_service:
