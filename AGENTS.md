@@ -21,12 +21,12 @@ this file.
 | --- | --- |
 | `hosts/tailgate/` | `tailgate.home.arpa`: Tailscale subnet router only |
 | `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL, model updater |
-| `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation, bootstrap and Docker only |
-| `roles/bootstrap/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, reboot |
+| `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation and Docker only |
+| `roles/bootstrap/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, final reboot |
 | `roles/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
 
 - Each host is an independent Ansible project: `ansible.cfg`, `inventory.ini`,
-  `bootstrap.yml`, `site.yml`, local `roles/`, and `secrets/`. There is no root
+  `site.yml`, local `roles/`, and `secrets/`. There is no root
   inventory or root playbook. Run Ansible **inside `hosts/<name>/`** so its config
   resolves `../../roles:./roles` and `../../.vault-pass` correctly.
 - Keep new roles local until a second host needs them, then move them to
@@ -61,13 +61,11 @@ and `workloads/*/.env.age`, and rejects staged plaintext secret files.
 ```sh
 # Run from each affected host directory; roles/bootstrap changes affect all hosts.
 cd hosts/ai                    # or hosts/tailgate or hosts/media
-ansible-playbook --syntax-check bootstrap.yml
 ansible-playbook --syntax-check site.yml
-ansible-lint bootstrap.yml site.yml  # if installed
+ansible-lint site.yml  # if installed
 
 # Live provisioning, when deployment is part of the task:
-ansible-playbook bootstrap.yml -e ansible_host=<DHCP-IP>  # fresh image only
-ansible-playbook site.yml                              # after bootstrap
+ansible-playbook site.yml
 ```
 
 Syntax checks use the configured vault password without contacting the hosts.
@@ -98,16 +96,16 @@ Finish with `git diff --check` and review the changed files.
 
 ## Bootstrap and Docker invariants
 
-- Bootstrap connects as **`pi:pi`**, becomes root with sudo, changes both passwords,
-  and switches the remaining sudo tasks to the new pi password.
+- `site.yml` connects with root SSH-key authentication when available; otherwise it
+  connects as **`pi:pi`**, becomes root with sudo, changes both passwords, and
+  switches the remaining sudo tasks to the new pi password.
 - Install the configured root public key before disabling password SSH. Preserve
   the `00-homelab-hardening.conf` drop-in, `/run/sshd` creation plus `sshd -t`
   before restarting SSH, and handler flush before reboot. Reboot reconnects as
-  root using public-key auth at the same overridden DHCP IP. Ensure the control
-  machine has the private key matching `bootstrap_pubkey` before provisioning.
-- Bootstrap changes access credentials, upgrades packages, and reboots; it is
-  for fresh images. `site.yml` is the repeatable setup path. Current per-host
-  configs disable SSH host-key checking.
+  root using public-key authentication. Ensure the control machine has the
+  private key matching `bootstrap_pubkey` before provisioning.
+- `site.yml` applies access configuration, host roles, and a final reboot in one
+  run. Per-host configs disable SSH host-key checking.
 - NanoPi's root filesystem is overlayfs: Docker needs **fuse-overlayfs**, since
   `overlay2` cannot nest on it. Flush the Docker restart handler before app roles.
   Docker and Tailscale apt URLs derive distribution/release from gathered facts;
@@ -117,7 +115,7 @@ Finish with `git diff --check` and review the changed files.
 ## Host-specific behavior
 
 - **Media:** NanoPi R6S with 64 GB eMMC. Install Debian Trixie from an SD eFlasher
-  image onto eMMC and remove the SD card before bootstrap. `site.yml` runs only
+  image onto eMMC and remove the SD card before running `site.yml`. `site.yml` runs only
   the shared `docker` role with its `fuse-overlayfs` default; no applications
   are configured. Its vault contains only the root and pi passwords.
 - **Tailgate:** enables IPv4/IPv6 forwarding and advertises `10.4.0.0/24`
@@ -126,8 +124,8 @@ Finish with `git diff --check` and review the changed files.
   It accepts routes and enables auto-update. `tailscale_exit_node` is
   unused; setting `tailscale_auto_update: false` skips enabling it rather than
   actively disabling it. `tailscale up` always reports changed.
-- **AI:** `site.yml` runs `docker` then `litellm`, deploying `/opt/litellm` and
-  invoking `docker compose up -d --build`. `litellm.home.arpa` is the app's TLS
+- **AI:** `site.yml` runs the `docker` role. `make apply workload=litellm` deploys
+  `/opt/litellm` with `docker compose up -d --build`. `litellm.home.arpa` is the app's TLS
   alias, distinct from the managed host `ai.home.arpa`. TLS is terminated by
   LiteLLM on `443:4000`; clients need the mkcert CA trust described in the README.
   Renewal/trust-location documentation remains a TODO.
