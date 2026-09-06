@@ -20,19 +20,14 @@ brew install ansible ansible-lint age docker docker-compose docker-buildx
 make init
 ```
 
-## Bootstrap a fresh host
+## Configure a host
 
 ```sh
-make ansible host=<host> playbook=bootstrap
+make bootstrap host=<host>
 ```
 
-Use `tailgate`, `ai`, or `media` for `<host>`.
-
-## Apply host configuration
-
-```sh
-make ansible host=<host> playbook=site
-```
+Use `tailgate`, `ai`, or `media` for `<host>`. The run applies all host
+configuration and performs at most one reboot after its final tasks.
 
 ## Apply a workload
 

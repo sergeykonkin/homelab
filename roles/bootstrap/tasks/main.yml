@@ -1,9 +1,9 @@
 ---
 # roles/bootstrap — bootstrap configuration for a NanoPi host.
-# The per-host bootstrap.yml connects using the fresh-image credential when
-# needed, or root public-key authentication after root access is configured.
+# The per-host site.yml selects either the initial credential or root public-key
+# authentication.
 #
-# Prereqs (set by the host's bootstrap.yml / inventory / vault):
+# Prereqs (set by the host's site.yml / inventory / vault):
 #   base_hostname        — e.g. "tailgate", "ai"
 #   vault_root_pw        — new root password (vault)
 #   vault_pi_pw          — new pi password (vault)
@@ -79,8 +79,7 @@
   no_log: true
 
 # Remaining tasks connected as pi need its new sudo password. Replace the
-# play's bootstrap become password; the reboot task below switches to root
-# key auth and does not depend on pi's sudo credentials.
+# play's bootstrap become password.
 - name: Switch sudo password to the new pi password for remaining tasks
   ansible.builtin.set_fact:
     ansible_become_password: "{{ vault_pi_pw }}"
@@ -93,6 +92,11 @@
     update_cache: true
     upgrade: true
   register: bootstrap_apt_upgrade
+
+- name: Determine whether the host requires a reboot
+  ansible.builtin.set_fact:
+    bootstrap_reboot_required: >-
+      {{ not bootstrap_complete_marker.stat.exists or bootstrap_apt_upgrade.changed }}
 
 # --- Base packages ---------------------------------------------------------
 
@@ -133,37 +137,3 @@
     group: root
     mode: "0644"
   notify: Validate and restart sshd
-
-# --- Completion and reboot -------------------------------------------------
-# Flush handlers so sshd validation+restart happens before the reboot.
-- name: Flush handlers (apply sshd/journald changes before reboot)
-  ansible.builtin.meta: flush_handlers
-
-- name: Record completed bootstrap configuration
-  ansible.builtin.file:
-    path: /var/lib/homelab
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Create bootstrap completion marker
-  ansible.builtin.file:
-    path: /var/lib/homelab/bootstrap-complete
-    state: touch
-    owner: root
-    group: root
-    mode: "0644"
-    modification_time: preserve
-    access_time: preserve
-
-- name: Reboot to complete bootstrap
-  ansible.builtin.reboot:
-    reboot_timeout: 300
-    test_command: whoami
-  when: not bootstrap_complete_marker.stat.exists or bootstrap_apt_upgrade.changed
-  vars:
-    ansible_user: root
-    ansible_password: ""
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-    ansible_ssh_extra_args: "-o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o BatchMode=yes"

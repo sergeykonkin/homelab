@@ -1,8 +1,0 @@
----
-# media bootstrap entry point.
-# Run from hosts/media with: ansible-playbook bootstrap.yml -e ansible_host=<DHCP-IP>
-
-- name: Run shared bootstrap playbook
-  import_playbook: ../../roles/bootstrap/playbook.yml
-  vars:
-    bootstrap_inventory_group: media_hosts

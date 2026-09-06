@@ -1,0 +1,34 @@
+---
+# Final tasks for a complete host configuration run.
+
+- name: Record completed bootstrap configuration
+  ansible.builtin.file:
+    path: /var/lib/homelab
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create bootstrap completion marker
+  ansible.builtin.file:
+    path: /var/lib/homelab/bootstrap-complete
+    state: touch
+    owner: root
+    group: root
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+
+- name: Flush handlers before reboot
+  ansible.builtin.meta: flush_handlers
+
+- name: Reboot host after configuration
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    test_command: whoami
+  when: bootstrap_reboot_required | bool
+  vars:
+    ansible_user: root
+    ansible_password: ""
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ansible_ssh_extra_args: "-o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o BatchMode=yes"

@@ -7,9 +7,7 @@ Run these commands from the repository root:
 ```sh
 make init
 
-make ansible host=ai playbook=bootstrap
-
-make ansible host=ai playbook=site
+make bootstrap host=ai
 
 make apply workload=litellm
 ```

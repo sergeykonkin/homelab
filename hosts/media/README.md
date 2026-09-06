@@ -7,7 +7,5 @@ Run these commands from the repository root:
 ```sh
 make init
 
-make ansible host=media playbook=bootstrap
-
-make ansible host=media playbook=site
+make bootstrap host=media
 ```

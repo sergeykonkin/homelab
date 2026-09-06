@@ -1,5 +1,5 @@
 ---
-# Shared bootstrap entry point. The importing host playbook sets
+# Shared connection-selection entry point. The importing host playbook sets
 # bootstrap_inventory_group to its inventory group.
 
 - name: Select bootstrap connection
@@ -30,7 +30,9 @@
     - name: Add host with selected bootstrap connection
       ansible.builtin.add_host:
         name: "{{ inventory_hostname }}"
-        groups: bootstrap_targets
+        groups:
+          - bootstrap_targets
+          - "{{ bootstrap_inventory_group | default('bootstrap_targets') }}"
         ansible_host: "{{ ansible_host }}"
         ansible_user: "{{ 'root' if bootstrap_root_key_access.rc == 0 else bootstrap_default_user }}"
         ansible_password: "{{ omit if bootstrap_root_key_access.rc == 0 else bootstrap_default_password }}"
@@ -41,9 +43,3 @@
              if bootstrap_root_key_access.rc == 0
              else '-o PreferredAuthentications=password -o PubkeyAuthentication=no' }}
       changed_when: false
-
-- name: Bootstrap configuration
-  hosts: bootstrap_targets
-  become: true
-  roles:
-    - bootstrap

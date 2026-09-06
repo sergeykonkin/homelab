@@ -1,11 +1,20 @@
 ---
-# Repeatable Docker setup after bootstrap.
-# Run from hosts/media with: ansible-playbook site.yml
+# Media host configuration. Run from hosts/media with:
+#   ansible-playbook site.yml
+
+- name: Select media connection
+  import_playbook: ../../roles/bootstrap/playbook.yml
+  vars:
+    bootstrap_inventory_group: media_hosts
 
 - name: Set up media (Docker)
   hosts: media_hosts
   become: true
-  vars:
-    ansible_user: root
   roles:
+    - bootstrap
     - docker
+  tasks:
+    - name: Finalize media host configuration
+      ansible.builtin.include_role:
+        name: bootstrap
+        tasks_from: finalize
