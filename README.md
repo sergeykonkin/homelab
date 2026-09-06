@@ -34,8 +34,10 @@ homelab/
     └── <name>/             # Compose workload, encrypted environment, deployment metadata
 ```
 
-Each host folder is an independent Ansible project — `cd` into it and run a
-playbook. There is no top-level inventory; `ls hosts/` is the list of hosts.
+Each host folder is an independent Ansible project. The top-level Make targets
+run playbooks from the selected host directory, so its inventory, vault password,
+and roles configuration are used. There is no top-level inventory; `ls hosts/`
+is the list of hosts.
 
 Roles start **colocated** in `hosts/<name>/roles/` and are promoted to `roles/`
 only once a second host needs them (a pure `git mv` — playbooks reference roles
@@ -81,18 +83,15 @@ Each host has **two playbooks**:
   when initial configuration or package upgrades require it. See the host's
   README for the exact manual prereqs (burn image, find the DHCP IP, etc.).
   ```bash
-  cd hosts/<name>
-  ansible-playbook bootstrap.yml -e ansible_host=<DHCP-IP>
+  make ansible host=<name> playbook=bootstrap
   ```
 
 - **`site.yml`** — run *anytime after bootstrap* to apply host configuration
   (Tailscale on tailgate; Docker on ai and media).
   Re-runnable; converges the host to the desired state.
   ```bash
-  cd hosts/<name>
-  ansible-playbook site.yml
+  make ansible host=<name> playbook=site
   ```
-
 See each host's `README.md` for the full setup walkthrough.
 
 ## Tooling on the control machine
