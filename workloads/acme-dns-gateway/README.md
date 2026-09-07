@@ -42,6 +42,17 @@ make init
 make apply workload=acme-dns-gateway
 ```
 
+`make apply` provisions the decrypted files listed under `copy_files` in
+[`workloads.yml`](../../workloads.yml) to `/opt/acme-dns-gateway/` on the
+target host, preserving their workload-relative paths (root-owned, directories
+`0700`, files `0400`), and points Compose at them with `COPY_DIR`. This
+indirection exists because Compose resolves `secrets: file:` and bind-mount
+paths on the client; a remote SSH Docker daemon cannot mount the control
+machine's filesystem. Without `COPY_DIR`, the Compose project falls back to
+the local workload directory for validation. Static configuration that does
+not change at runtime (the Caddyfile) is baked into its image at build time
+instead of being copied.
+
 Run the backend tests from the repository root:
 
 ```sh

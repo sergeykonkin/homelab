@@ -127,6 +127,12 @@ Finish with `git diff --check` and review the changed files.
 - **ACME:** NanoPi Zero2. `site.yml` runs the `docker` role like AI and Media.
   `make apply workload=acme-dns-gateway` deploys the gateway through the `acme`
   Docker context. Its vault contains only the root and pi passwords.
+  `make apply` provisions each workload's `copy_files` (from `workloads.yml`)
+  to `/opt/<workload>/` on the target, preserving workload-relative paths
+  (root-owned, directories `0700`, files `0400`), and sets `COPY_DIR` so
+  Compose mounts those host-side files; Compose `secrets: file:` and
+  bind-mount paths resolve on the client and cannot cross SSH Docker
+  contexts.
 - **Tailgate:** enables IPv4/IPv6 forwarding and advertises `10.4.0.0/24`
   (management), `10.4.1.0/24` (trusted), and `10.4.4.0/24` (isolated). Route approval
   in the Tailscale admin console is a manual prerequisite for usable routing.

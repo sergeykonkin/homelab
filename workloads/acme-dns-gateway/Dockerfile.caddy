@@ -7,3 +7,6 @@ RUN xcaddy build \
 
 FROM caddy:${CADDY_VERSION}-alpine
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+# Static configuration is baked into the image: build contexts cross SSH
+# Docker contexts, bind mounts of control-machine paths do not.
+COPY Caddyfile /etc/caddy/Caddyfile

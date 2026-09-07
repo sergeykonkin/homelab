@@ -20,7 +20,6 @@ services:
     ports:
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     secrets:
@@ -78,6 +77,6 @@ volumes:
 
 secrets:
   caddy_acmedns:
-    file: ./secrets/caddy-acmedns.json
+    file: ${COPY_DIR:-.}/secrets/caddy-acmedns.json
   gateway_config:
-    file: ./secrets/gateway.json
+    file: ${COPY_DIR:-.}/secrets/gateway.json

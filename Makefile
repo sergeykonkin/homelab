@@ -48,6 +48,9 @@ apply: ## Build and apply a workload; pass workload=<name> [host=<name>|all]
 	workload_dir="workloads/$(workload)"; \
 	allowed_hosts=$$(WORKLOAD_NAME="$(workload)" yq -r '(.workloads[strenv(WORKLOAD_NAME)].allowed_hosts // [])[]' workloads.yml | tr '\n' ' '); \
 	required_files=$$(WORKLOAD_NAME="$(workload)" yq -r '(.workloads[strenv(WORKLOAD_NAME)].required_files // [".env"])[]' workloads.yml); \
+	copy_files=$$(WORKLOAD_NAME="$(workload)" yq -r '(.workloads[strenv(WORKLOAD_NAME)].copy_files // [])[]' workloads.yml | tr '\n' ' '); \
+	copy_dir=""; \
+	test -z "$$copy_files" || copy_dir="/opt/$(workload)"; \
 	test -n "$$allowed_hosts" || { echo "no deployment hosts configured for $(workload)" >&2; exit 1; }; \
 	for required_file in $$required_files; do \
 		test -f "$$workload_dir/$$required_file" || { echo "run make init before applying $(workload): missing $$required_file" >&2; exit 1; }; \
@@ -67,7 +70,15 @@ apply: ## Build and apply a workload; pass workload=<name> [host=<name>|all]
 		docker context inspect "$$target" >/dev/null 2>&1 || { echo "Docker context unavailable for $$target; run make init" >&2; exit 1; }; \
 	done; \
 	for target in $$targets; do \
-		docker --context "$$target" compose --env-file "$$workload_dir/.env" --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build; \
+		if [ -n "$$copy_dir" ]; then \
+			ssh "root@$$target.home.arpa" "install -d -m 0700 '$$copy_dir'"; \
+			for copy_file in $$copy_files; do \
+				ssh "root@$$target.home.arpa" "install -d -m 0700 '$$copy_dir'/$$(dirname "$$copy_file")"; \
+				scp -p "$$workload_dir/$$copy_file" "root@$$target.home.arpa:$$copy_dir/$$copy_file"; \
+				ssh "root@$$target.home.arpa" "chmod 0400 '$$copy_dir'/$$copy_file"; \
+			done; \
+		fi; \
+		COPY_DIR="$$copy_dir" docker --context "$$target" compose --env-file "$$workload_dir/.env" --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build; \
 	done
 
 bootstrap: ## Configure a host; pass host=<name> [ansible_args="..."]
