@@ -58,3 +58,13 @@ Run the backend tests from the repository root:
 ```sh
 python3 -m unittest discover -s workloads/acme-dns-gateway/tests -v
 ```
+
+Adding or rotating a client identity edits the `clients` array in
+`secrets/gateway.json`, re-encrypts the tracked `.age` file, and re-applies
+the workload. `make apply` updates the provisioned files on the host but
+Compose does not recreate the container on secret-content changes, so restart
+it to reload the configuration:
+
+```sh
+docker --context acme restart acme-dns-gateway
+```

@@ -13,7 +13,8 @@ runs services configured manually on the box.
 
 README files are human-facing overviews with concise commands. Keep detailed
 implementation constraints, agent instructions, and operational invariants in
-this file.
+this file. The TLS ingress design (per-host Caddy, ACME-DNS gateway, DNS-01)
+lives in [`docs/tls-ingress.md`](docs/tls-ingress.md).
 
 ## Layout and conventions
 
@@ -26,6 +27,8 @@ this file.
 | `roles/bootstrap/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, final reboot |
 | `roles/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
 | `workloads/acme-dns-gateway/` | Homelab certification centre project |
+| `workloads/caddy/` | Per-host TLS ingress: Caddy reverse proxy with DNS-01 issuance |
+| `docs/` | Design documentation |
 
 - Each host is an independent Ansible project: `ansible.cfg`, `inventory.ini`,
   `site.yml`, local `roles/`, and `secrets/`. There is no root
@@ -132,23 +135,25 @@ Finish with `git diff --check` and review the changed files.
   (root-owned, directories `0700`, files `0400`), and sets `COPY_DIR` so
   Compose mounts those host-side files; Compose `secrets: file:` and
   bind-mount paths resolve on the client and cannot cross SSH Docker
-  contexts.
+  contexts. Updating `copy_files` contents does not recreate containers;
+  restart the affected container to reload secret-bearing processes.
 - **Tailgate:** enables IPv4/IPv6 forwarding and advertises `10.4.0.0/24`
   (management), `10.4.1.0/24` (trusted), and `10.4.4.0/24` (isolated). Route approval
   in the Tailscale admin console is a manual prerequisite for usable routing.
   It accepts routes and enables auto-update. `tailscale_exit_node` is
   unused; setting `tailscale_auto_update: false` skips enabling it rather than
   actively disabling it. `tailscale up` always reports changed.
-- **AI:** `site.yml` runs the `docker` role. `make apply workload=litellm` deploys
-  `/opt/litellm` with `docker compose up -d --build`. `litellm.home.arpa` is the app's TLS
-  alias, distinct from the managed host `ai.home.arpa`. TLS is terminated by
-  LiteLLM on `443:4000`; clients need the mkcert CA trust described in the README.
-  Renewal/trust-location documentation remains a TODO.
+- **AI:** `site.yml` runs the `docker` role. `make apply workload=litellm`
+  deploys the stack and `make apply workload=caddy` deploys the host's TLS
+  ingress. LiteLLM publishes no host port; Caddy terminates TLS for
+  `litellm.srjhome.net` on 443 and reverse proxies to `litellm:4000` over the
+  external `caddy_litellm` network, created once per host
+  (`docker --context ai network create caddy_litellm`). See
+  [`docs/tls-ingress.md`](docs/tls-ingress.md).
 - The Compose template defines LiteLLM (`main-stable`), PostgreSQL 16, and a
   Python 3.12 updater image. Preserve persistent volumes `litellm_postgres_data`
   and `litellm_config`, dependency health checks, and LiteLLM's 300-second cold
-  start allowance. The cert bind mount hardcodes `/opt/litellm/certs`; changing
-  role deployment-path defaults alone does not relocate the entire stack.
+  start allowance.
 - `update_config.py` uses only the Python standard library. It fetches Nebius
   `models?verbose=1`, filters models that accept text input and produce text
   output (`text->text` and `text+image->text`; not `text->embedding` or

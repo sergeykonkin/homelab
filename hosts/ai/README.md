@@ -9,5 +9,7 @@ make init
 
 make bootstrap host=ai
 
+docker --context ai network create caddy_litellm
+make apply workload=caddy
 make apply workload=litellm
 ```

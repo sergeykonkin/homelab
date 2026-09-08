@@ -1,0 +1,13 @@
+{
+	admin off
+	acme_ca {$ACME_CA}
+}
+
+{$SITE_HOSTNAME} {
+	tls {
+		dns acmedns /run/secrets/caddy-acmedns.json
+		resolvers 1.1.1.1 1.0.0.1
+	}
+
+	reverse_proxy {$SITE_UPSTREAM}
+}

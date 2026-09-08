@@ -1,0 +1,47 @@
+name: caddy
+
+services:
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    container_name: caddy
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      ACME_CA: "${ACME_CA:?set ACME_CA}"
+      SITE_HOSTNAME: "${SITE_HOSTNAME:?set SITE_HOSTNAME}"
+      SITE_UPSTREAM: "${SITE_UPSTREAM:?set SITE_UPSTREAM}"
+    ports:
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    secrets:
+      - source: acmedns_client
+        target: caddy-acmedns.json
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      - caddy_litellm
+
+networks:
+  caddy_litellm:
+    external: true
+    name: caddy_litellm
+
+volumes:
+  caddy_data:
+    name: caddy_data
+  caddy_config:
+    name: caddy_config
+
+secrets:
+  acmedns_client:
+    file: ${COPY_DIR:-.}/secrets/caddy-acmedns.json

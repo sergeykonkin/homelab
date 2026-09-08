@@ -1,0 +1,12 @@
+ARG CADDY_VERSION=2.11.4
+
+FROM caddy:${CADDY_VERSION}-builder-alpine AS builder
+ARG ACME_DNS_MODULE_VERSION=v0.7.0
+RUN xcaddy build \
+    --with github.com/caddy-dns/acmedns@${ACME_DNS_MODULE_VERSION}
+
+FROM caddy:${CADDY_VERSION}-alpine
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+# Static configuration is baked into the image: build contexts cross SSH
+# Docker contexts, bind mounts of control-machine paths do not.
+COPY Caddyfile /etc/caddy/Caddyfile

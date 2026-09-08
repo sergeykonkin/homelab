@@ -9,8 +9,6 @@ services:
       - config:/app/config:ro
     command:
       - "--config=/app/config/config.yaml"
-    ports:
-      - "4000:4000"
     environment:
       DATABASE_URL: "postgresql://llmproxy:${POSTGRES_PASSWORD}@db:5432/litellm"
       STORE_MODEL_IN_DB: "True"
@@ -29,6 +27,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 300s
+    networks:
+      - default
+      - caddy_litellm
 
   models-updater:
     build:
@@ -64,6 +65,11 @@ services:
       timeout: 5s
       retries: 12
       start_period: 120s
+
+networks:
+  caddy_litellm:
+    external: true
+    name: caddy_litellm
 
 volumes:
   postgres_data:
