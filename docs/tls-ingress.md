@@ -55,25 +55,29 @@ service.srjhome.net
 
 The LiteLLM service uses `litellm.srjhome.net`.
 
-Internal clients use split-horizon DNS. The local DNS resolver maps each
-service name to the private address of its host:
-
-```text
-service.srjhome.net -> private address of the service host
-```
-
-Cloudflare provides authoritative DNS for ACME validation. Each service has a
-permanent CNAME from its ACME challenge name to a unique validation name:
+For each service, the update gateway reconciles two public records: a
+permanent CNAME from the ACME challenge name to a unique validation name,
+and an unproxied A record mapping the service name to the private address
+of its host:
 
 ```text
 _acme-challenge.litellm.srjhome.net
   CNAME <unique-id>.acme.srjhome.net
+litellm.srjhome.net
+  A <private address of the service host>
 ```
 
 The update gateway creates and replaces TXT records only at these unique
 validation names. Let's Encrypt follows the CNAME when validating the
-challenge. The HTTPS service does not require a public A or AAAA record and
-does not require internet-reachable ports.
+challenge.
+
+The public A record is the only name-to-address mapping for the service;
+there is no split-horizon DNS. Internal clients and Tailscale clients
+resolve the name through ordinary public DNS, and tailnet traffic reaches
+the address through the subnet routes advertised by `tailgate`. Resolvers
+that filter private addresses from public answers (DNS rebind protection)
+need a one-time whitelist for `srjhome.net`. The service does not require
+internet-reachable ports.
 
 ## Host ingress
 
@@ -207,9 +211,9 @@ uses a configured Cloudflare Zone ID and does not require permission to
 enumerate zones. Cloudflare does not support restricting a DNS write token to
 individual record names. The token is never distributed to client hosts.
 
-Static `_acme-challenge` CNAME records are provisioned separately with
-administrative DNS access. The gateway cannot change the authorization
-mapping represented by those CNAME records through its client API.
+The gateway cannot change the authorization mapping represented by the
+challenge CNAME records through its client API; the mapping is driven only
+by the administrative configuration (see DNS record reconciliation below).
 
 Updating provisioned secret contents (gateway clients, Caddy client
 credentials) is a two-step operation: `make apply` copies the new files to
@@ -221,6 +225,31 @@ gateway:
 make apply workload=acme-dns-gateway
 docker --context acme restart acme-dns-gateway
 ```
+
+## DNS record reconciliation
+
+The gateway converges the public records of every configured client at
+startup and every `reconcile_interval_seconds`:
+
+- the `_acme-challenge.<hostname>` CNAME targeting the client's validation
+  name — the DNS-01 authorization mapping;
+- the `<hostname>` A record with the client entry's `address` — the
+  private IPv4 of the service host, always unproxied with a 60-second TTL.
+
+Each client entry carries an `address`; only RFC1918 addresses are
+accepted. The gateway creates or corrects a record only when it carries
+the gateway's ownership comment, and it never deletes records. A name
+occupied by a record without the ownership comment is left untouched and
+logged; a conflicting manually created record is removed once with
+administrative DNS access so the gateway can recreate it under its
+ownership. Removing a client stops reconciliation for its names; leftover
+records are removed manually.
+
+Reconciliation is driven only by the administrative configuration, so the
+client API cannot move the authorization mapping represented by a
+challenge CNAME. A failed pass is logged and retried on the next interval;
+it does not interrupt the update API, and renewals for already-issued
+clients continue while Cloudflare is unreachable.
 
 ## Private gateway
 
@@ -272,17 +301,21 @@ gateway Caddy
   -> Caddy serves the gateway HTTPS endpoint
 ```
 
-The gateway has its own client identity and unique validation name. Its
-public DNS bootstrap consists only of a permanent challenge CNAME:
+The gateway has its own client identity and unique validation name.
+Reconciliation publishes its challenge CNAME and an unproxied A record
+mapping `acme.srjhome.net` to the private address of `acme.home.arpa`, so
+client hosts reach the gateway through ordinary public DNS:
 
 ```text
 _acme-challenge.acme.srjhome.net
   CNAME <gateway-unique-id>.acme.srjhome.net
+acme.srjhome.net
+  A <private address of acme.home.arpa>
 ```
 
-No public A or AAAA record exists for `acme.srjhome.net`. The local update
-path remains available for renewal even when the gateway's client-facing
-certificate is expired, preventing a certificate bootstrap deadlock.
+The local update path remains available for renewal even when the
+gateway's client-facing certificate is expired, preventing a certificate
+bootstrap deadlock.
 
 ## Certificate lifecycle
 
@@ -316,18 +349,18 @@ Adding an HTTPS service to a host requires these coordinated changes:
 3. Join the application to that network as `external` in its Compose project;
    join the caddy project to the same network.
 4. Generate a unique client identity (username, password, validation
-   subdomain UUID) and add it to the gateway's `secrets/gateway.json`;
-   re-encrypt the tracked `.age` file, `make apply
-   workload=acme-dns-gateway`, and restart the gateway container.
-5. Add the permanent `_acme-challenge.<service>.srjhome.net` CNAME to
-   Cloudflare DNS targeting `<subdomain>.acme.srjhome.net`.
-6. Store the client credentials as
+   subdomain UUID) and add it with the service host's private `address` to
+   the gateway's `secrets/gateway.json`; re-encrypt the tracked `.age`
+   file, `make apply workload=acme-dns-gateway`, and restart the gateway
+   container. Reconciliation then creates the service's challenge CNAME
+   and A record in Cloudflare.
+5. Store the client credentials as
    `workloads/caddy/secrets/caddy-acmedns.json` with
    `"server_url": "https://acme.srjhome.net"` and re-encrypt the tracked
    `.age` counterpart.
-7. Set `SITE_HOSTNAME` and `SITE_UPSTREAM` in `workloads/caddy/.env` and
+6. Set `SITE_HOSTNAME` and `SITE_UPSTREAM` in `workloads/caddy/.env` and
    start with the Let's Encrypt staging CA.
-8. Apply both workloads and verify staging issuance; switch `ACME_CA` to the
+7. Apply both workloads and verify staging issuance; switch `ACME_CA` to the
    production directory, re-apply the caddy workload, and verify the service
    through its public name.
 
@@ -336,6 +369,12 @@ Adding an HTTPS service to a host requires these coordinated changes:
 For web workloads, port 443 is the only host-published application port. SSH,
 Tailscale, and other host services remain governed by their own
 configuration.
+
+Publishing service names with private addresses discloses internal
+addressing to anyone who can query the public zone. The records grant no
+reachability on their own: services answer only on the LAN and on
+Tailscale-approved subnet routes, and port 443 remains the only published
+application port.
 
 Compromise of Caddy on a host exposes its TLS private keys and gateway client
 credentials. Those credentials permit certificate issuance only for hostnames

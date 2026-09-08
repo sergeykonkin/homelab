@@ -29,15 +29,31 @@ def config_dict():
         "cloudflare_timeout_seconds": 10,
         "auth_failures_per_minute": 2,
         "updates_per_minute": 2,
+        "reconcile_interval_seconds": 900,
         "clients": [
             {
                 "hostname": "acme.example.com",
                 "username": "gateway-user-0001",
                 "password": "p" * 32,
                 "subdomain": "gateway-validation",
+                "address": "10.4.1.10",
             }
         ],
     }
+
+
+def managed_record(record_type, name, content, **overrides):
+    record = {
+        "id": "1" * 32,
+        "type": record_type,
+        "name": name,
+        "content": content,
+        "ttl": 60,
+        "proxied": False,
+        "comment": gateway.MANAGED_COMMENT,
+    }
+    record.update(overrides)
+    return record
 
 
 class FakeUpdater:
@@ -75,6 +91,24 @@ class ConfigTests(unittest.TestCase):
     def test_rejects_hostname_outside_zone(self):
         raw = config_dict()
         raw["clients"][0]["hostname"] = "gateway.example.org"
+        with self.assertRaises(gateway.ConfigurationError):
+            gateway.Config.from_dict(raw)
+
+    def test_rejects_public_client_address(self):
+        raw = config_dict()
+        raw["clients"][0]["address"] = "8.8.8.8"
+        with self.assertRaises(gateway.ConfigurationError):
+            gateway.Config.from_dict(raw)
+
+    def test_rejects_malformed_client_address(self):
+        raw = config_dict()
+        raw["clients"][0]["address"] = "not-an-address"
+        with self.assertRaises(gateway.ConfigurationError):
+            gateway.Config.from_dict(raw)
+
+    def test_rejects_missing_reconcile_interval(self):
+        raw = config_dict()
+        del raw["reconcile_interval_seconds"]
         with self.assertRaises(gateway.ConfigurationError):
             gateway.Config.from_dict(raw)
 
@@ -166,6 +200,134 @@ class CloudflareUpdaterTests(unittest.TestCase):
         updater, _, client = self.make_updater([{"success": True, "result": [record]}])
         with self.assertRaises(gateway.CloudflareError):
             updater.update(client, TOKEN_B)
+
+
+class CloudflareReconcilerTests(unittest.TestCase):
+    def make_reconciler(self, responses):
+        requests = []
+
+        def opener(request, timeout):
+            requests.append((request, timeout))
+            response = responses.pop(0)
+            return FakeResponse(json.dumps(response).encode())
+
+        config = gateway.Config.from_dict(config_dict())
+        return (
+            gateway.CloudflareReconciler(config, opener),
+            requests,
+            next(iter(config.clients.values())),
+        )
+
+    def test_creates_missing_records(self):
+        responses = [
+            {"success": True, "result": []},
+            {"success": True, "result": {"id": "1" * 32}},
+            {"success": True, "result": []},
+            {"success": True, "result": {"id": "2" * 32}},
+        ]
+        reconciler, requests, client = self.make_reconciler(responses)
+        reconciler.reconcile([client])
+        self.assertEqual([item[0].method for item in requests], ["GET", "POST", "GET", "POST"])
+        cname = json.loads(requests[1][0].data)
+        self.assertEqual(cname["type"], "CNAME")
+        self.assertEqual(cname["name"], "_acme-challenge.acme.example.com")
+        self.assertEqual(cname["content"], client.record_name)
+        self.assertEqual(cname["proxied"], False)
+        self.assertEqual(cname["comment"], gateway.MANAGED_COMMENT)
+        address = json.loads(requests[3][0].data)
+        self.assertEqual(address["type"], "A")
+        self.assertEqual(address["name"], "acme.example.com")
+        self.assertEqual(address["content"], "10.4.1.10")
+        self.assertEqual(address["proxied"], False)
+
+    def test_leaves_converged_records_untouched(self):
+        responses = [
+            {
+                "success": True,
+                "result": [
+                    managed_record(
+                        "CNAME",
+                        "_acme-challenge.acme.example.com",
+                        "gateway-validation.acme.example.com",
+                    )
+                ],
+            },
+            {
+                "success": True,
+                "result": [managed_record("A", "acme.example.com", "10.4.1.10")],
+            },
+        ]
+        reconciler, requests, client = self.make_reconciler(responses)
+        reconciler.reconcile([client])
+        self.assertEqual([item[0].method for item in requests], ["GET", "GET"])
+
+    def test_corrects_stale_managed_record(self):
+        responses = [
+            {
+                "success": True,
+                "result": [
+                    managed_record(
+                        "CNAME", "_acme-challenge.acme.example.com", "stale.acme.example.com"
+                    )
+                ],
+            },
+            {"success": True, "result": {}},
+            {
+                "success": True,
+                "result": [managed_record("A", "acme.example.com", "10.4.1.10")],
+            },
+        ]
+        reconciler, requests, client = self.make_reconciler(responses)
+        reconciler.reconcile([client])
+        self.assertEqual([item[0].method for item in requests], ["GET", "PUT", "GET"])
+        self.assertTrue(requests[1][0].full_url.endswith("/" + "1" * 32))
+        body = json.loads(requests[1][0].data)
+        self.assertEqual(body["content"], client.record_name)
+        self.assertEqual(body["proxied"], False)
+
+    def test_unproxies_managed_record(self):
+        responses = [
+            {
+                "success": True,
+                "result": [
+                    managed_record(
+                        "CNAME",
+                        "_acme-challenge.acme.example.com",
+                        "gateway-validation.acme.example.com",
+                    )
+                ],
+            },
+            {
+                "success": True,
+                "result": [managed_record("A", "acme.example.com", "10.4.1.10", proxied=True)],
+            },
+            {"success": True, "result": {}},
+        ]
+        reconciler, requests, client = self.make_reconciler(responses)
+        reconciler.reconcile([client])
+        self.assertEqual([item[0].method for item in requests], ["GET", "GET", "PUT"])
+        self.assertEqual(json.loads(requests[2][0].data)["proxied"], False)
+
+    def test_refuses_unmanaged_record_and_continues(self):
+        responses = [
+            {
+                "success": True,
+                "result": [
+                    managed_record(
+                        "CNAME",
+                        "_acme-challenge.acme.example.com",
+                        "gateway-validation.acme.example.com",
+                        comment=None,
+                    )
+                ],
+            },
+            {"success": True, "result": []},
+            {"success": True, "result": {"id": "2" * 32}},
+        ]
+        reconciler, requests, client = self.make_reconciler(responses)
+        reconciler.reconcile([client])
+        self.assertEqual([item[0].method for item in requests], ["GET", "GET", "POST"])
+        self.assertEqual(json.loads(requests[2][0].data)["type"], "A")
 
 
 class HttpTests(unittest.TestCase):

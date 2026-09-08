@@ -23,17 +23,21 @@ age --armor --encrypt \
   --output secrets/caddy-acmedns.json.age secrets/caddy-acmedns.json
 ```
 
-The gateway hostname has a permanent public challenge CNAME:
+For every configured client, including the gateway itself, the backend
+reconciles the public challenge CNAME and an unproxied A record with the
+client entry's private address:
 
 ```text
 _acme-challenge.acme.example.com
   CNAME <gateway-subdomain>.acme.example.com
+acme.example.com
+  A <gateway host private address>
 ```
 
-Split-horizon DNS maps the gateway hostname to the deployment host's private
-address. Caddy publishes `443` on all interfaces and proxies `POST /update`
-to the gateway backend, which authenticates each request with its configured
-per-client credentials.
+Resolvers with DNS rebind protection need a one-time whitelist for the
+zone. Caddy publishes `443` on all interfaces and proxies `POST /update`
+to the gateway backend, which authenticates each request with its
+configured per-client credentials.
 
 Deploy from the repository root:
 
@@ -61,9 +65,11 @@ python3 -m unittest discover -s workloads/acme-dns-gateway/tests -v
 
 Adding or rotating a client identity edits the `clients` array in
 `secrets/gateway.json`, re-encrypts the tracked `.age` file, and re-applies
-the workload. `make apply` updates the provisioned files on the host but
-Compose does not recreate the container on secret-content changes, so restart
-it to reload the configuration:
+the workload. Each entry's `address` is the private IPv4 of the service
+host. On load and every `reconcile_interval_seconds` the gateway converges
+the entry's public challenge CNAME and A record. `make apply` updates the
+provisioned files on the host but Compose does not recreate the container
+on secret-content changes, so restart it to reload the configuration:
 
 ```sh
 docker --context acme restart acme-dns-gateway

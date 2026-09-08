@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private acme-dns-compatible Cloudflare TXT update gateway."""
+"""Private acme-dns-compatible Cloudflare DNS update and reconcile gateway."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from typing import Callable
 
 
@@ -30,6 +31,12 @@ SUBDOMAIN_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 TXT_PATTERN = re.compile(r"^[A-Za-z0-9_-]{43}$")
 ZONE_ID_PATTERN = re.compile(r"^[0-9a-fA-F]{32}$")
 MANAGED_COMMENT = "managed by acme-dns-gateway"
+RECORD_TTL = 60
+RFC1918_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+)
 MAX_BODY_BYTES = 1024
 MAX_HEADER_BYTES = 256
 
@@ -48,6 +55,7 @@ class Client:
     username: str
     password: str
     subdomain: str
+    address: str
     record_name: str
 
 
@@ -60,6 +68,7 @@ class Config:
     cloudflare_timeout_seconds: int
     auth_failures_per_minute: int
     updates_per_minute: int
+    reconcile_interval_seconds: int
     clients: dict[str, Client]
 
     @classmethod
@@ -83,6 +92,7 @@ class Config:
             "cloudflare_timeout_seconds",
             "auth_failures_per_minute",
             "updates_per_minute",
+            "reconcile_interval_seconds",
             "clients",
         }
         if set(raw) != required:
@@ -95,6 +105,7 @@ class Config:
         timeout = require_int(raw["cloudflare_timeout_seconds"], 1, 30)
         auth_limit = require_int(raw["auth_failures_per_minute"], 1, 100)
         update_limit = require_int(raw["updates_per_minute"], 1, 100)
+        reconcile_interval = require_int(raw["reconcile_interval_seconds"], 60, 86400)
 
         if not ZONE_ID_PATTERN.fullmatch(zone_id):
             raise ConfigurationError("zone_id is invalid")
@@ -133,6 +144,7 @@ class Config:
             cloudflare_timeout_seconds=timeout,
             auth_failures_per_minute=auth_limit,
             updates_per_minute=update_limit,
+            reconcile_interval_seconds=reconcile_interval,
             clients=clients,
         )
 
@@ -156,13 +168,27 @@ def require_int(value: object, minimum: int, maximum: int) -> int:
     return value
 
 
+def require_private_ipv4(value: object) -> str:
+    if not isinstance(value, str):
+        raise ConfigurationError("client address must be an IPv4 string")
+    try:
+        address = ipaddress.IPv4Address(value)
+    except ipaddress.AddressValueError as exc:
+        raise ConfigurationError("client address is not a valid IPv4 address") from exc
+    if not any(address in network for network in RFC1918_NETWORKS):
+        raise ConfigurationError("client address must be a private IPv4 address")
+    return str(address)
+
+
 def parse_client(raw: object, zone_name: str, validation_zone: str) -> Client:
-    if not isinstance(raw, dict) or set(raw) != {"hostname", "username", "password", "subdomain"}:
+    required = {"hostname", "username", "password", "subdomain", "address"}
+    if not isinstance(raw, dict) or set(raw) != required:
         raise ConfigurationError("client entry is invalid")
     hostname = require_dns_name(raw["hostname"], "hostname")
     username = require_string(raw["username"], "username")
     password = require_string(raw["password"], "password")
     subdomain = require_string(raw["subdomain"], "subdomain").lower()
+    address = require_private_ipv4(raw["address"])
     if not hostname.endswith(f".{zone_name}"):
         raise ConfigurationError("client hostname is outside zone_name")
     if not USERNAME_PATTERN.fullmatch(username):
@@ -171,7 +197,9 @@ def parse_client(raw: object, zone_name: str, validation_zone: str) -> Client:
         raise ConfigurationError("client password is invalid")
     if not SUBDOMAIN_PATTERN.fullmatch(subdomain):
         raise ConfigurationError("client subdomain is invalid")
-    return Client(hostname, username, password, subdomain, f"{subdomain}.{validation_zone}")
+    return Client(
+        hostname, username, password, subdomain, address, f"{subdomain}.{validation_zone}"
+    )
 
 
 class SlidingWindowLimiter:
@@ -196,36 +224,17 @@ class SlidingWindowLimiter:
             return True
 
 
-class CloudflareUpdater:
-    """Maintain the two-value rolling TXT set used by acme-dns clients."""
+class CloudflareApi:
+    """Minimal authenticated client for the zone's DNS record collection."""
 
     def __init__(self, config: Config, opener: Callable = urllib.request.urlopen):
         self.config = config
         self.opener = opener
-        self.locks = collections.defaultdict(threading.Lock)
         self.api_base = f"https://api.cloudflare.com/client/v4/zones/{config.zone_id}/dns_records"
 
-    def update(self, client: Client, txt: str) -> None:
-        with self.locks[client.record_name]:
-            records = self._list_records(client.record_name)
-            if any(record.get("content") == txt for record in records):
-                return
-            if len(records) < 2:
-                self._request("POST", self.api_base, self._record_body(client.record_name, txt))
-                return
-            oldest = min(records, key=lambda record: parse_cloudflare_time(record.get("modified_on")))
-            record_id = oldest.get("id")
-            if not isinstance(record_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", record_id):
-                raise CloudflareError("record identifier is invalid")
-            self._request(
-                "PUT",
-                f"{self.api_base}/{record_id}",
-                self._record_body(client.record_name, txt),
-            )
-
-    def _list_records(self, record_name: str) -> list[dict]:
+    def _list_exact(self, record_type: str, record_name: str) -> list[dict]:
         query = urllib.parse.urlencode(
-            {"type": "TXT", "name.exact": record_name, "match": "all", "per_page": "100"}
+            {"type": record_type, "name.exact": record_name, "match": "all", "per_page": "100"}
         )
         payload = self._request("GET", f"{self.api_base}?{query}")
         result = payload.get("result")
@@ -235,24 +244,17 @@ class CloudflareUpdater:
         for record in result:
             if not isinstance(record, dict):
                 raise CloudflareError("record entry is invalid")
-            if record.get("type") != "TXT" or canonical_dns_name(record.get("name")) != record_name:
+            if record.get("type") != record_type or canonical_dns_name(record.get("name")) != record_name:
                 raise CloudflareError("record query returned an unexpected record")
-            if record.get("comment") != MANAGED_COMMENT:
-                raise CloudflareError("validation name contains an unmanaged TXT record")
             records.append(record)
-        if len(records) > 2:
-            raise CloudflareError("validation name contains too many TXT records")
         return records
 
     @staticmethod
-    def _record_body(record_name: str, txt: str) -> dict:
-        return {
-            "type": "TXT",
-            "name": record_name,
-            "content": txt,
-            "ttl": 60,
-            "comment": MANAGED_COMMENT,
-        }
+    def _record_id(record: dict) -> str:
+        record_id = record.get("id")
+        if not isinstance(record_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", record_id):
+            raise CloudflareError("record identifier is invalid")
+        return record_id
 
     def _request(self, method: str, url: str, body: dict | None = None) -> dict:
         data = None if body is None else json.dumps(body, separators=(",", ":")).encode()
@@ -274,6 +276,98 @@ class CloudflareUpdater:
         if not isinstance(payload, dict) or payload.get("success") is not True:
             raise CloudflareError("Cloudflare API rejected the update")
         return payload
+
+
+class CloudflareUpdater(CloudflareApi):
+    """Maintain the two-value rolling TXT set used by acme-dns clients."""
+
+    def __init__(self, config: Config, opener: Callable = urllib.request.urlopen):
+        super().__init__(config, opener)
+        self.locks = collections.defaultdict(threading.Lock)
+
+    def update(self, client: Client, txt: str) -> None:
+        with self.locks[client.record_name]:
+            records = self._list_records(client.record_name)
+            if any(record.get("content") == txt for record in records):
+                return
+            if len(records) < 2:
+                self._request("POST", self.api_base, self._record_body(client.record_name, txt))
+                return
+            oldest = min(records, key=lambda record: parse_cloudflare_time(record.get("modified_on")))
+            self._request(
+                "PUT",
+                f"{self.api_base}/{self._record_id(oldest)}",
+                self._record_body(client.record_name, txt),
+            )
+
+    def _list_records(self, record_name: str) -> list[dict]:
+        records = self._list_exact("TXT", record_name)
+        for record in records:
+            if record.get("comment") != MANAGED_COMMENT:
+                raise CloudflareError("validation name contains an unmanaged TXT record")
+        if len(records) > 2:
+            raise CloudflareError("validation name contains too many TXT records")
+        return records
+
+    @staticmethod
+    def _record_body(record_name: str, txt: str) -> dict:
+        return {
+            "type": "TXT",
+            "name": record_name,
+            "content": txt,
+            "ttl": RECORD_TTL,
+            "comment": MANAGED_COMMENT,
+        }
+
+
+class CloudflareReconciler(CloudflareApi):
+    """Converge each client's public challenge CNAME and address records.
+
+    Only records carrying the managed ownership comment are created or
+    corrected; the reconciler never deletes records and refuses to touch
+    records it does not own.
+    """
+
+    def reconcile(self, clients: Iterable[Client]) -> None:
+        for client in clients:
+            self._ensure_record("CNAME", f"_acme-challenge.{client.hostname}", client.record_name)
+            self._ensure_record("A", client.hostname, client.address)
+
+    def _ensure_record(self, record_type: str, record_name: str, content: str) -> None:
+        try:
+            records = self._list_exact(record_type, record_name)
+            if any(record.get("comment") != MANAGED_COMMENT for record in records):
+                raise CloudflareError("record name contains an unmanaged record")
+            if len(records) > 1:
+                raise CloudflareError("record name contains too many records")
+            body = self._record_body(record_type, record_name, content)
+            if not records:
+                self._request("POST", self.api_base, body)
+                LOG.info("created %s record for %s", record_type, record_name)
+                return
+            record = records[0]
+            converged = (
+                canonical_dns_name(record.get("content")) == content
+                and record.get("proxied") is False
+                and record.get("ttl") == RECORD_TTL
+            )
+            if converged:
+                return
+            self._request("PUT", f"{self.api_base}/{self._record_id(record)}", body)
+            LOG.info("updated %s record for %s", record_type, record_name)
+        except CloudflareError:
+            LOG.error("record reconciliation failed for %s %s", record_type, record_name)
+
+    @staticmethod
+    def _record_body(record_type: str, record_name: str, content: str) -> dict:
+        return {
+            "type": record_type,
+            "name": record_name,
+            "content": content,
+            "ttl": RECORD_TTL,
+            "proxied": False,
+            "comment": MANAGED_COMMENT,
+        }
 
 
 def canonical_dns_name(value: object) -> str:
@@ -423,6 +517,18 @@ class GatewayServer(http.server.ThreadingHTTPServer):
         self.server_name, self.server_port = self.server_address
 
 
+def reconcile_forever(reconciler: CloudflareReconciler, config: Config, stop: threading.Event) -> None:
+    # Reconcile() isolates per-record failures; the broad guard keeps a
+    # defect in one pass from killing the loop. The update API must keep
+    # serving renewals while reconciliation is broken.
+    while not stop.is_set():
+        try:
+            reconciler.reconcile(config.clients.values())
+        except Exception:
+            LOG.exception("reconciliation pass failed unexpectedly")
+        stop.wait(config.reconcile_interval_seconds)
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
@@ -435,9 +541,21 @@ def main() -> None:
         LOG.critical("gateway configuration is invalid")
         raise SystemExit(1)
 
+    stop = threading.Event()
+    reconcile_thread = threading.Thread(
+        target=reconcile_forever,
+        args=(CloudflareReconciler(config), config, stop),
+        daemon=True,
+    )
+    reconcile_thread.start()
     state = GatewayState(config, CloudflareUpdater(config))
     server = GatewayServer((host, port), state)
-    signal.signal(signal.SIGTERM, lambda _signum, _frame: threading.Thread(target=server.shutdown).start())
+
+    def handle_sigterm(_signum: int, _frame: object) -> None:
+        stop.set()
+        threading.Thread(target=server.shutdown).start()
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
     LOG.info("gateway listening on port %d", port)
     server.serve_forever()
 

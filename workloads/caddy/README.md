@@ -9,16 +9,12 @@ published.
 Create and age-encrypt `.env` and `secrets/caddy-acmedns.json` from their
 `.example` schemas. `make init` decrypts the tracked ASCII-armored `.age`
 files to mode `0600`; plaintext files remain outside Git. The credentials are
-the service's client identity on the gateway, and `subdomain` must match the
-service's permanent public challenge CNAME:
+the service's client identity on the gateway; the gateway reconciles the
+service's public challenge CNAME (targeting `<subdomain>.acme.example.com`)
+and an unproxied A record mapping the service name to the deployment host's
+private address.
 
-```text
-_acme-challenge.<service>.example.com
-  CNAME <service-subdomain>.acme.example.com
-```
-
-Split-horizon DNS maps the service name to the deployment host's private
-address. Initial issuance runs against the Let's Encrypt staging CA; switch
+Initial issuance runs against the Let's Encrypt staging CA; switch
 `ACME_CA` to the production directory after DNS-01 and routing validate.
 
 The Caddyfile is baked into the image and renders one site from
