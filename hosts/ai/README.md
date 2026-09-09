@@ -9,9 +9,9 @@ make init
 
 make bootstrap host=ai
 
-make apply host=ai workload=litellm
-make apply host=ai workload=caddy
+make deploy host=ai workload=litellm
+make deploy host=ai workload=caddy
 
-# Apply every workload on the host, with Caddy applied last.
-make apply host=ai workload=all
+# Deploy every workload on the host, with Caddy deployed last.
+make deploy host=ai workload=all
 ```

@@ -1,5 +1,5 @@
 ---
-# roles/bootstrap handlers
+# shared_roles/bootstrap handlers
 
 - name: Restart journald
   ansible.builtin.systemd_service:

@@ -86,9 +86,9 @@ internet-reachable ports.
 ## Host ingress
 
 On application hosts, Caddy runs as the host's `workloads/caddy/` Compose
-project and is deployed with `make apply host=<host> workload=caddy`. On the
+project and is deployed with `make deploy host=<host> workload=caddy`. On the
 ACME host, Caddy is deployed with
-`make apply host=acme workload=acme-dns-gateway`; there is no standalone Caddy
+`make deploy host=acme workload=acme-dns-gateway`; there is no standalone Caddy
 workload on that host. The Caddyfile is baked into the image: build contexts
 cross SSH Docker contexts, bind mounts of control-machine paths do not. The
 Caddyfile renders a single site from `SITE_HOSTNAME` and `SITE_UPSTREAM`;
@@ -134,7 +134,7 @@ Caddy does not join the application network; the database does not join
 network access to each other or to their peers' databases.
 
 Each `caddy_<service>` network is declared `external` in both Compose projects
-and listed in both workloads' `deploy.yml` files. `make apply` creates the
+and listed in both workloads' `deploy.yml` files. `make deploy` creates the
 network when it is absent.
 
 ## Caddy configuration
@@ -149,7 +149,7 @@ mounted as a Compose secret.
 The client credentials live in
 `hosts/<host>/workloads/caddy/secrets/caddy-acmedns.json`.
 The plaintext file is gitignored (mode `0600`); its ASCII-armored age
-counterpart is tracked. `make apply` provisions it to
+counterpart is tracked. `make deploy` provisions it to
 `/opt/caddy/secrets/caddy-acmedns.json` on the target host through the
 `copy_files` mechanism (root-owned, directories `0700`, files `0400`) and
 points Compose at it with `COPY_DIR`.
@@ -221,13 +221,13 @@ challenge CNAME records through its client API; the mapping is driven only
 by the administrative configuration (see DNS record reconciliation below).
 
 Updating provisioned secret contents (gateway clients, Caddy client
-credentials) is a two-step operation: `make apply` copies the new files to
+credentials) is a two-step operation: `make deploy` copies the new files to
 the host, and the affected container must then be restarted, because Compose
 does not recreate containers when only secret file contents change. For the
 gateway:
 
 ```sh
-make apply host=acme workload=acme-dns-gateway
+make deploy host=acme workload=acme-dns-gateway
 docker --context acme restart acme-dns-gateway
 ```
 
@@ -351,12 +351,12 @@ Adding an HTTPS service to a host requires these coordinated changes:
 1. Deploy the application without published host ports.
 2. Declare the service-specific `caddy_<service>` external network in both
    Compose projects and both workloads' `deploy.yml` files.
-3. Join the application and Caddy to that network. `make apply` creates it on
+3. Join the application and Caddy to that network. `make deploy` creates it on
    the selected host when absent.
 4. Generate a unique client identity (username, password, validation
    subdomain UUID) and add it with the service host's private `address` to
    the gateway's `secrets/gateway.json`; re-encrypt the tracked `.age`
-   file, `make apply host=acme workload=acme-dns-gateway`, and restart the gateway
+   file, `make deploy host=acme workload=acme-dns-gateway`, and restart the gateway
    container. Reconciliation then creates the service's challenge CNAME
    and A record in Cloudflare.
 5. Store the client credentials as
@@ -366,8 +366,8 @@ Adding an HTTPS service to a host requires these coordinated changes:
 6. Set `SITE_HOSTNAME` and `SITE_UPSTREAM` in
    `hosts/<host>/workloads/caddy/.env` and
    start with the Let's Encrypt staging CA.
-7. Apply both workloads and verify staging issuance; switch `ACME_CA` to the
-   production directory, re-apply the caddy workload, and verify the service
+7. Deploy both workloads and verify staging issuance; switch `ACME_CA` to the
+   production directory, redeploy the caddy workload, and verify the service
    through its public name.
 
 ## Security boundary

@@ -43,10 +43,10 @@ Deploy from the repository root:
 
 ```sh
 make init
-make apply host=acme workload=acme-dns-gateway
+make deploy host=acme workload=acme-dns-gateway
 ```
 
-`make apply` provisions the decrypted files listed under `copy_files` in
+`make deploy` provisions the decrypted files listed under `copy_files` in
 `deploy.yml` to `/opt/acme-dns-gateway/` on the target host, preserving their
 workload-relative paths (root-owned, directories
 `0700`, files `0400`), and points Compose at them with `COPY_DIR`. This
@@ -67,7 +67,7 @@ Adding or rotating a client identity edits the `clients` array in
 `secrets/gateway.json`, re-encrypts the tracked `.age` file, and re-applies
 the workload. Each entry's `address` is the private IPv4 of the service
 host. On load and every `reconcile_interval_seconds` the gateway converges
-the entry's public challenge CNAME and A record. `make apply` updates the
+the entry's public challenge CNAME and A record. `make deploy` updates the
 provisioned files on the host but Compose does not recreate the container
 on secret-content changes, so restart it to reload the configuration:
 

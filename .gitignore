@@ -19,11 +19,11 @@ __pycache__/
 # Temp files
 tmp/
 
-# NOTE: hosts/<name>/bootstrap/secrets/vault.yml IS committed — but ONLY in its
+# NOTE: hosts/<name>/ansible/secrets/vault.yml IS committed — but ONLY in its
 # ansible-vault-encrypted form (file starts with `$ANSIBLE_VAULT;...`).
 # Plaintext vault.yml is NOT ignored. Before staging, verify the vault header.
-# If encryption is needed, run from hosts/<name>/bootstrap/ to load its ansible.cfg:
+# If encryption is needed, run from hosts/<name>/ansible/ to load its ansible.cfg:
 #     ansible-vault encrypt secrets/vault.yml
 # A plaintext vault.yml committed by accident would leak every secret.
-# The committed hosts/<name>/bootstrap/secrets/vault.yml.example files are
+# The committed hosts/<name>/ansible/secrets/vault.yml.example files are
 # templates with placeholder values and are safe.

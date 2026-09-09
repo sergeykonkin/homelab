@@ -1,5 +1,5 @@
 ---
-# roles/docker defaults
+# shared_roles/docker defaults
 
 # The NanoPi Zero2 root filesystem is itself an overlayfs (overlay-root).
 # Docker's default `overlay2` driver fails to nest on it, so we force

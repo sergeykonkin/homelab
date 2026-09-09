@@ -9,8 +9,8 @@ Run from the repository root:
 
 ```sh
 make init
-make apply host=ai workload=litellm
+make deploy host=ai workload=litellm
 ```
 
-The workload's `deploy.yml` causes `make apply` to create the external
+The workload's `deploy.yml` causes `make deploy` to create the external
 `caddy_litellm` network when it is absent.

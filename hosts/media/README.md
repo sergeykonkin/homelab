@@ -13,5 +13,5 @@ make bootstrap host=media
 Docker workloads belong under `workloads/<name>/` and are applied with:
 
 ```sh
-make apply host=media workload=<name>
+make deploy host=media workload=<name>
 ```

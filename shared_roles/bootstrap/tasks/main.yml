@@ -1,5 +1,5 @@
 ---
-# roles/bootstrap — bootstrap configuration for a NanoPi host.
+# shared_roles/bootstrap — bootstrap configuration for a NanoPi host.
 # The per-host site.yml selects either the initial credential or root public-key
 # authentication.
 #
