@@ -9,11 +9,11 @@ init: hooks decrypt-secrets docker-contexts ## Prepare local secrets, Git hooks,
 hooks: ## Configure the repository Git hooks
 	git config --local core.hooksPath hooks
 
-decrypt-secrets: ## Decrypt the vault password and workload secret files
+decrypt-secrets: ## Decrypt Ansible and workload secret files
 	@command -v age >/dev/null || { echo "age is required" >&2; exit 1; }
 	@test -f "$(AGE_IDENTITY)" || { echo "age identity not found: $(AGE_IDENTITY)" >&2; exit 1; }
 	@set -eu; \
-	for encrypted in .vault-pass.age $$(find hosts -type f -path '*/workloads/*' -name '*.age' | sort); do \
+	for encrypted in $$(find hosts -type f -name '*.age' | sort); do \
 		[ -f "$$encrypted" ] || continue; \
 		target=$${encrypted%.age}; \
 		temporary=$$(mktemp "$${target}.XXXXXX"); \

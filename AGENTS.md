@@ -34,7 +34,7 @@ lives in [`docs/tls-ingress.md`](docs/tls-ingress.md).
   `ansible.cfg`, `inventory.ini`, `site.yml`, local `roles/`, and `secrets/`.
   There is no root inventory or root playbook. Run Ansible **inside
   `hosts/<name>/ansible/`** so its config resolves `../../../shared_roles:./roles`
-  and `../../../.vault-pass` correctly.
+  correctly.
 - Each `hosts/<name>/workloads/<workload>/` directory is an independent Compose
   project. Its `deploy.yml` declares copied files and external Docker networks.
   Workload placement is defined by its host directory.
@@ -44,12 +44,12 @@ lives in [`docs/tls-ingress.md`](docs/tls-ingress.md).
 - Inventory groups use `<name>_hosts` to avoid host/group name collisions.
   Steady-state access is root over SSH keys; Python is `/usr/bin/python3`.
 - Follow existing YAML style: two-space indentation, named tasks, fully qualified
-  module names, quoted file modes, role-prefixed variables, and `vault_` secrets.
+  module names, quoted file modes, and role-prefixed variables.
   Put tunables in role defaults; existing bootstrap settings/key live in
   `shared_roles/bootstrap/vars/main.yml` (higher precedence than defaults).
 - Keep repeatable setup convergent, use handlers for service configuration, and
   give command/shell tasks deliberate change/failure reporting. Update README
-  overviews, commands, and vault examples when changing their interfaces.
+  overviews, commands, and secret examples when changing their interfaces.
 - Write documentation and comments as descriptions of the current state. Omit
   change history and wording such as "now" or "previously" that narrates edits.
 - Commit and push changes only when explicitly asked to deliver, ship, submit,
@@ -64,9 +64,8 @@ dependency manifest, or top-level build command. The ACME-DNS gateway has a
 standard-library Python unit test suite under its workload directory.
 
 Run `make init` from the repo root to configure Git's local `core.hooksPath` as
-`hooks`. The Python 3 pre-commit hook requires an Ansible Vault header on indexed
-files under `hosts/*/ansible/secrets/` and an ASCII-armored age header on `.vault-pass.age`
-and workload `.age` files. It rejects staged plaintext secret files.
+`hooks`. The Python 3 pre-commit hook requires an ASCII-armored age header on
+Ansible and workload `.age` files. It rejects staged plaintext secret files.
 
 ```sh
 # Run from each affected Ansible directory; shared role changes affect all hosts.
@@ -78,8 +77,8 @@ ansible-lint site.yml  # if installed
 ansible-playbook site.yml
 ```
 
-Syntax checks use the configured vault password without contacting the hosts.
-They do not verify runtime behavior. `--check` is not a complete deployment
+Syntax checks use the plaintext files produced by `make init` without contacting
+the hosts. They do not verify runtime behavior. `--check` is not a complete deployment
 simulation: command tasks, password-hash results, and generated files depend on
 real execution. Do not run live provisioning merely to validate repository edits.
 For updater edits, use `bash -n hosts/ai/workloads/litellm/entrypoint.sh` and
@@ -93,19 +92,14 @@ Finish with `git diff --check` and review the changed files.
 
 ## Secrets
 
-- `.vault-pass` is ignored and must never be committed or printed. `.vault-pass.age`
-  and workload `.age` files are ASCII-armored age ciphertext. All
-  `hosts/*/ansible/secrets/vault.yml` files **are tracked** and must start with
-  `$ANSIBLE_VAULT;`. Plaintext vaults are **not** protected by `.gitignore`.
-  Check encryption before staging any vault.
-- Use `ansible-vault edit secrets/vault.yml` from the host's `ansible/` directory for existing
-  secrets. The `.example` files define the schema with placeholders; never copy
-  one over an existing vault as a routine setup step or expose decrypted values
-  in logs, diffs, or replies.
-- All vaults contain `vault_root_pw` and `vault_pi_pw`; Tailgate also has
-  `vault_tailscale_authkey`. Workload secrets use encrypted `.age` counterparts;
-  plaintext files remain ignored and untracked. Preserve `no_log: true` on
-  secret-bearing tasks and keep generated credentials and config out of Git.
+- Ansible and workload `.age` files are tracked ASCII-armored age ciphertext.
+  Their counterparts without `.age` are ignored plaintext files produced by
+  `make init`. Encrypt edited plaintext with `age --armor` and the public key
+  derived from `~/.age/age.key`.
+- The Ansible `.example` files define the schema with placeholders. Ansible host
+  secrets contain `bootstrap_root_password` and `bootstrap_pi_password`; Tailgate
+  also has `tailscale_auth_key`. Preserve `no_log: true` on secret-bearing tasks
+  and keep generated credentials and config out of Git.
 
 ## Bootstrap and Docker invariants
 

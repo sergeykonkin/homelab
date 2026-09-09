@@ -6,7 +6,6 @@ import sys
 
 
 AGE_HEADER = b"-----BEGIN AGE ENCRYPTED FILE-----"
-VAULT_HEADER = b"$ANSIBLE_VAULT;"
 
 
 def git(*args):
@@ -46,7 +45,6 @@ def is_workload_secret(path):
 def main():
     paths = git("ls-files", "--cached", "-z")
     rejected_plaintext = []
-    rejected_vault = []
     rejected_age = []
 
     for raw_path in paths.split(b"\0"):
@@ -54,16 +52,13 @@ def main():
             continue
         path = raw_path.decode("utf-8", errors="surrogateescape")
         if (
-            path == ".vault-pass"
+            (is_host_secret(path) and not path.endswith((".age", ".example")))
             or is_workload_file(path, ".env")
             or (is_workload_secret(path) and not path.endswith((".age", ".example")))
         ):
             rejected_plaintext.append(path)
-        elif is_host_secret(path) and not path.endswith(".example"):
-            if not git("show", f":{path}").startswith(VAULT_HEADER):
-                rejected_vault.append(path)
         elif (
-            path == ".vault-pass.age"
+            (is_host_secret(path) and path.endswith(".age"))
             or is_workload_file(path, ".env.age")
             or (is_workload_secret(path) and path.endswith(".age"))
         ):
@@ -75,20 +70,15 @@ def main():
         for path in rejected_plaintext:
             print(f"  {path!r}", file=sys.stderr)
 
-    if rejected_vault:
-        print("Commit blocked: staged host secrets must be Ansible Vault encrypted:", file=sys.stderr)
-        for path in rejected_vault:
-            print(f"  {path!r}", file=sys.stderr)
-
     if rejected_age:
-        print("Commit blocked: staged workload secrets must be ASCII-armored age files:", file=sys.stderr)
+        print("Commit blocked: staged secret ciphertext must be ASCII-armored age files:", file=sys.stderr)
         for path in rejected_age:
             print(f"  {path!r}", file=sys.stderr)
 
-    if rejected_plaintext or rejected_vault or rejected_age:
+    if rejected_plaintext or rejected_age:
         print(
-            "Use Ansible Vault for hosts/*/ansible/secrets/, age --armor for .vault-pass.age "
-            "and workload .age files, and keep plaintext files out of Git.",
+            "Use age --armor for Ansible and workload .age files, and keep plaintext "
+            "secret files out of Git.",
             file=sys.stderr,
         )
         return 1

@@ -22,6 +22,17 @@ brew install ansible ansible-lint age docker docker-compose docker-buildx yq
 make init
 ```
 
+`make init` decrypts each tracked, ASCII-armored `.age` file to its gitignored
+plaintext counterpart with `~/.age/age.key`. To update an Ansible secret, edit
+`hosts/<host>/ansible/secrets/secrets.yml` and refresh its ciphertext:
+
+```sh
+recipient="$(age-keygen -y ~/.age/age.key)"
+age --armor --recipient "$recipient" \
+  --output hosts/<host>/ansible/secrets/secrets.yml.age \
+  hosts/<host>/ansible/secrets/secrets.yml
+```
+
 ## Configure a host
 
 ```sh

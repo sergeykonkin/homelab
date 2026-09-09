@@ -5,7 +5,7 @@
 # Usage:
 #   cd hosts/tailgate/ansible
 #   ansible-playbook site.yml
-# Prereq: tailscale auth key in secrets/vault.yml (vault_tailscale_authkey).
+# Prereq: tailscale auth key in secrets/secrets.yml (tailscale_auth_key).
 # Manual one-time: approve the advertised routes in the Tailscale admin console.
 
 - name: Select tailgate connection
@@ -17,7 +17,7 @@
   hosts: tailgate_hosts
   become: true
   vars_files:
-    - secrets/vault.yml
+    - secrets/secrets.yml
   roles:
     - bootstrap
     - tailscale

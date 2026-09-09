@@ -3,16 +3,16 @@
 # The per-host site.yml selects either the initial credential or root public-key
 # authentication.
 #
-# Prereqs (set by the host's site.yml / inventory / vault):
+# Prereqs (set by the host's site.yml / inventory / secrets file):
 #   base_hostname        — e.g. "tailgate", "ai"
-#   vault_root_pw        — new root password (vault)
-#   vault_pi_pw          — new pi password (vault)
+#   bootstrap_root_password — new root password
+#   bootstrap_pi_password   — new pi password
 
 # --- Hostname --------------------------------------------------------------
 
-- name: Load bootstrap vault
+- name: Load bootstrap secrets
   ansible.builtin.include_vars:
-    file: "{{ inventory_dir }}/secrets/vault.yml"
+    file: "{{ inventory_dir }}/secrets/secrets.yml"
   no_log: true
 
 - name: Check whether bootstrap completed
@@ -54,7 +54,7 @@
 
 - name: Generate root password hash (on target)
   ansible.builtin.command:
-    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-root", "{{ vault_root_pw }}"]
+    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-root", "{{ bootstrap_root_password }}"]
   register: bootstrap_root_hash
   changed_when: false
   no_log: true
@@ -67,7 +67,7 @@
 
 - name: Generate pi password hash (on target)
   ansible.builtin.command:
-    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-pi", "{{ vault_pi_pw }}"]
+    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-pi", "{{ bootstrap_pi_password }}"]
   register: bootstrap_pi_hash
   changed_when: false
   no_log: true
@@ -82,7 +82,7 @@
 # play's bootstrap become password.
 - name: Switch sudo password to the new pi password for remaining tasks
   ansible.builtin.set_fact:
-    ansible_become_password: "{{ vault_pi_pw }}"
+    ansible_become_password: "{{ bootstrap_pi_password }}"
   no_log: true
 
 # --- apt update + upgrade --------------------------------------------------
