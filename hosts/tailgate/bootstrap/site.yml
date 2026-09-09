@@ -3,13 +3,13 @@
 # subnet router.
 #
 # Usage:
-#   cd hosts/tailgate
+#   cd hosts/tailgate/bootstrap
 #   ansible-playbook site.yml
 # Prereq: tailscale auth key in secrets/vault.yml (vault_tailscale_authkey).
 # Manual one-time: approve the advertised routes in the Tailscale admin console.
 
 - name: Select tailgate connection
-  import_playbook: ../../roles/bootstrap/playbook.yml
+  import_playbook: ../../../roles/bootstrap/playbook.yml
   vars:
     bootstrap_inventory_group: tailgate_hosts
 

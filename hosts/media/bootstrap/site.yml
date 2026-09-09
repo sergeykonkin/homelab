@@ -1,9 +1,9 @@
 ---
-# Media host configuration. Run from hosts/media with:
+# Media host configuration. Run from hosts/media/bootstrap with:
 #   ansible-playbook site.yml
 
 - name: Select media connection
-  import_playbook: ../../roles/bootstrap/playbook.yml
+  import_playbook: ../../../roles/bootstrap/playbook.yml
   vars:
     bootstrap_inventory_group: media_hosts
 

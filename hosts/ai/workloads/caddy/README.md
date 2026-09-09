@@ -19,25 +19,21 @@ Initial issuance runs against the Let's Encrypt staging CA; switch
 
 The Caddyfile is baked into the image and renders one site from
 `SITE_HOSTNAME` and `SITE_UPSTREAM`. Each proxied service joins a dedicated
-`caddy_<service>` network shared only with Caddy. Networks are `external` and
-are created once on the target host:
-
-```sh
-docker --context <host> network create caddy_<service>
-```
+`caddy_<service>` network shared only with Caddy. Networks are external and
+listed in `deploy.yml`; `make apply` creates them when absent.
 
 Deploy from the repository root:
 
 ```sh
 make init
-make apply workload=caddy
+make apply host=ai workload=caddy
 ```
 
 `make apply` provisions the decrypted files listed under `copy_files` in
-[`workloads.yml`](../../workloads.yml) to `/opt/caddy/` on the target host and
-points Compose at them with `COPY_DIR`; see the ACME-DNS gateway README for
-why this indirection exists. Without `COPY_DIR`, the project falls back to the
-local workload directory for validation.
+`deploy.yml` to `/opt/caddy/` on the target host and points Compose at them
+with `COPY_DIR`; see the ACME-DNS gateway README for why this indirection
+exists. Without `COPY_DIR`, the project falls back to the local workload
+directory for validation.
 
 ACME account data and certificates persist in the `caddy_data` volume on the
 host; Caddy renews certificates automatically.

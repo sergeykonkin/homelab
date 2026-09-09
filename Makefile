@@ -13,7 +13,7 @@ decrypt-secrets: ## Decrypt the vault password and workload secret files
 	@command -v age >/dev/null || { echo "age is required" >&2; exit 1; }
 	@test -f "$(AGE_IDENTITY)" || { echo "age identity not found: $(AGE_IDENTITY)" >&2; exit 1; }
 	@set -eu; \
-	for encrypted in .vault-pass.age workloads/*/.env.age workloads/*/secrets/*.age; do \
+	for encrypted in .vault-pass.age $$(find hosts -type f -path '*/workloads/*' -name '*.age' | sort); do \
 		[ -f "$$encrypted" ] || continue; \
 		target=$${encrypted%.age}; \
 		temporary=$$(mktemp "$${target}.XXXXXX"); \
@@ -40,36 +40,37 @@ docker-contexts: ## Create or update Docker contexts for managed Docker hosts
 		fi; \
 	done
 
-apply: ## Build and apply a workload; pass workload=<name> [host=<name>|all]
-	@test -n "$(workload)" || { echo "usage: make apply workload=<workload> [host=<host>|all]" >&2; exit 1; }
-	@test -f "workloads/$(workload)/compose.yaml" || { echo "unknown workload: $(workload)" >&2; exit 1; }
+apply: ## Build and apply a workload; pass host=<name> workload=<name>|all
+	@test -n "$(host)" || { echo "usage: make apply host=<host> workload=<workload>|all" >&2; exit 1; }
+	@test -n "$(workload)" || { echo "usage: make apply host=<host> workload=<workload>|all" >&2; exit 1; }
+	@test "$(host)" != "all" || { echo "host=all is not supported; select one host" >&2; exit 1; }
+	@test -f "hosts/$(host)/bootstrap/site.yml" || { echo "unknown host: $(host)" >&2; exit 1; }
 	@command -v yq >/dev/null || { echo "yq is required" >&2; exit 1; }
 	@set -eu; \
-	workload_dir="workloads/$(workload)"; \
-	allowed_hosts=$$(WORKLOAD_NAME="$(workload)" yq -r '(.workloads[strenv(WORKLOAD_NAME)].allowed_hosts // [])[]' workloads.yml | tr '\n' ' '); \
-	required_files=$$(WORKLOAD_NAME="$(workload)" yq -r '(.workloads[strenv(WORKLOAD_NAME)].required_files // [".env"])[]' workloads.yml); \
-	copy_files=$$(WORKLOAD_NAME="$(workload)" yq -r '(.workloads[strenv(WORKLOAD_NAME)].copy_files // [])[]' workloads.yml | tr '\n' ' '); \
-	copy_dir=""; \
-	test -z "$$copy_files" || copy_dir="/opt/$(workload)"; \
-	test -n "$$allowed_hosts" || { echo "no deployment hosts configured for $(workload)" >&2; exit 1; }; \
-	for required_file in $$required_files; do \
-		test -f "$$workload_dir/$$required_file" || { echo "run make init before applying $(workload): missing $$required_file" >&2; exit 1; }; \
-	done; \
-	if [ -z "$(host)" ]; then \
-		set -- $$allowed_hosts; \
-		[ "$$#" -eq 1 ] || { echo "$(workload) has multiple allowed hosts; pass host=<host> or host=all (allowed: $$allowed_hosts)" >&2; exit 1; }; \
-		targets="$$allowed_hosts"; \
-	elif [ "$(host)" = "all" ]; then \
-		targets="$$allowed_hosts"; \
-	else \
-		printf '%s\\n' "$$allowed_hosts" | tr ' ' '\\n' | grep -Fx "$(host)" >/dev/null || { echo "$(workload) cannot be deployed to $(host); allowed hosts: $$allowed_hosts" >&2; exit 1; }; \
-		targets="$(host)"; \
-	fi; \
-	for target in $$targets; do \
-		test -f "hosts/$$target/site.yml" || { echo "unknown host: $$target" >&2; exit 1; }; \
-		docker context inspect "$$target" >/dev/null 2>&1 || { echo "Docker context unavailable for $$target; run make init" >&2; exit 1; }; \
-	done; \
-	for target in $$targets; do \
+	target="$(host)"; \
+	workloads_dir="hosts/$$target/workloads"; \
+	docker context inspect "$$target" >/dev/null 2>&1 || { echo "Docker context unavailable for $$target; run make init" >&2; exit 1; }; \
+	apply_one() { \
+		name="$$1"; \
+		workload_dir="$$workloads_dir/$$name"; \
+		test -f "$$workload_dir/compose.yaml" || { echo "unknown workload for $$target: $$name" >&2; exit 1; }; \
+		test -f "$$workload_dir/deploy.yml" || { echo "missing deployment manifest: $$workload_dir/deploy.yml" >&2; exit 1; }; \
+		copy_files=$$(yq -r '(.copy_files // [])[]' "$$workload_dir/deploy.yml"); \
+		external_networks=$$(yq -r '(.external_networks // [])[]' "$$workload_dir/deploy.yml"); \
+		copy_dir=""; \
+		test -z "$$copy_files" || copy_dir="/opt/$$name"; \
+		if [ -f "$$workload_dir/.env.age" ]; then \
+			test -f "$$workload_dir/.env" || { echo "run make init before applying $$name: missing .env" >&2; exit 1; }; \
+			env_args="--env-file $$workload_dir/.env"; \
+		else \
+			env_args=""; \
+		fi; \
+		for copy_file in $$copy_files; do \
+			test -f "$$workload_dir/$$copy_file" || { echo "run make init before applying $$name: missing $$copy_file" >&2; exit 1; }; \
+		done; \
+		for network in $$external_networks; do \
+			docker --context "$$target" network inspect "$$network" >/dev/null 2>&1 || docker --context "$$target" network create "$$network" >/dev/null; \
+		done; \
 		if [ -n "$$copy_dir" ]; then \
 			ssh "root@$$target.home.arpa" "install -d -m 0700 '$$copy_dir'"; \
 			for copy_file in $$copy_files; do \
@@ -78,13 +79,23 @@ apply: ## Build and apply a workload; pass workload=<name> [host=<name>|all]
 				ssh "root@$$target.home.arpa" "chmod 0400 '$$copy_dir'/$$copy_file"; \
 			done; \
 		fi; \
-		COPY_DIR="$$copy_dir" docker --context "$$target" compose --env-file "$$workload_dir/.env" --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build; \
-	done
+		COPY_DIR="$$copy_dir" docker --context "$$target" compose $$env_args --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build; \
+	}; \
+	if [ "$(workload)" = "all" ]; then \
+		for workload_dir in "$$workloads_dir"/*; do \
+			[ -f "$$workload_dir/compose.yaml" ] || continue; \
+			name=$$(basename "$$workload_dir"); \
+			[ "$$name" = "caddy" ] || apply_one "$$name"; \
+		done; \
+		[ ! -f "$$workloads_dir/caddy/compose.yaml" ] || apply_one caddy; \
+	else \
+		apply_one "$(workload)"; \
+	fi
 
 bootstrap: ## Configure a host; pass host=<name> [ansible_args="..."]
 	@test -n "$(host)" || { echo "usage: make bootstrap host=<host>" >&2; exit 1; }
-	@test -f "hosts/$(host)/site.yml" || { echo "unknown host: $(host)" >&2; exit 1; }
-	@cd "hosts/$(host)" && ansible-playbook site.yml $(ansible_args)
+	@test -f "hosts/$(host)/bootstrap/site.yml" || { echo "unknown host: $(host)" >&2; exit 1; }
+	@cd "hosts/$(host)/bootstrap" && ansible-playbook site.yml $(ansible_args)
 
 help: ## Show available Make targets
-	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target> [workload=<name>] [host=<name>|all]\n\nTargets:\n" } /^[[:alnum:]_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target> [host=<name>] [workload=<name>|all]\n\nTargets:\n" } /^[[:alnum:]_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)

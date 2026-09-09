@@ -9,5 +9,5 @@ make init
 
 make bootstrap host=acme
 
-make apply workload=acme-dns-gateway
+make apply host=acme workload=acme-dns-gateway
 ```

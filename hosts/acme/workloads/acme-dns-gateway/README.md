@@ -43,12 +43,12 @@ Deploy from the repository root:
 
 ```sh
 make init
-make apply workload=acme-dns-gateway
+make apply host=acme workload=acme-dns-gateway
 ```
 
 `make apply` provisions the decrypted files listed under `copy_files` in
-[`workloads.yml`](../../workloads.yml) to `/opt/acme-dns-gateway/` on the
-target host, preserving their workload-relative paths (root-owned, directories
+`deploy.yml` to `/opt/acme-dns-gateway/` on the target host, preserving their
+workload-relative paths (root-owned, directories
 `0700`, files `0400`), and points Compose at them with `COPY_DIR`. This
 indirection exists because Compose resolves `secrets: file:` and bind-mount
 paths on the client; a remote SSH Docker daemon cannot mount the control
@@ -60,7 +60,7 @@ instead of being copied.
 Run the backend tests from the repository root:
 
 ```sh
-python3 -m unittest discover -s workloads/acme-dns-gateway/tests -v
+python3 -m unittest discover -s hosts/acme/workloads/acme-dns-gateway/tests -v
 ```
 
 Adding or rotating a client identity edits the `clients` array in

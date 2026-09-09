@@ -9,7 +9,9 @@ make init
 
 make bootstrap host=ai
 
-docker --context ai network create caddy_litellm
-make apply workload=caddy
-make apply workload=litellm
+make apply host=ai workload=litellm
+make apply host=ai workload=caddy
+
+# Apply every workload on the host, with Caddy applied last.
+make apply host=ai workload=all
 ```

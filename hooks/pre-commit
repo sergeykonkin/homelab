@@ -15,17 +15,32 @@ def git(*args):
 
 def is_host_secret(path):
     parts = path.split("/")
-    return len(parts) >= 4 and parts[0] == "hosts" and parts[2] == "secrets"
+    return (
+        len(parts) >= 5
+        and parts[0] == "hosts"
+        and parts[2] == "bootstrap"
+        and parts[3] == "secrets"
+    )
 
 
 def is_workload_file(path, filename):
     parts = path.split("/")
-    return len(parts) == 3 and parts[0] == "workloads" and parts[2] == filename
+    return (
+        len(parts) == 5
+        and parts[0] == "hosts"
+        and parts[2] == "workloads"
+        and parts[4] == filename
+    )
 
 
 def is_workload_secret(path):
     parts = path.split("/")
-    return len(parts) == 4 and parts[0] == "workloads" and parts[2] == "secrets"
+    return (
+        len(parts) >= 6
+        and parts[0] == "hosts"
+        and parts[2] == "workloads"
+        and parts[4] == "secrets"
+    )
 
 
 def main():
@@ -72,7 +87,7 @@ def main():
 
     if rejected_plaintext or rejected_vault or rejected_age:
         print(
-            "Use Ansible Vault for hosts/*/secrets/, age --armor for .vault-pass.age "
+            "Use Ansible Vault for hosts/*/bootstrap/secrets/, age --armor for .vault-pass.age "
             "and workload .age files, and keep plaintext files out of Git.",
             file=sys.stderr,
         )

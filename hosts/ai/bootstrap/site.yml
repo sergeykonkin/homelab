@@ -3,11 +3,11 @@
 # overlay-root.
 #
 # Usage:
-#   cd hosts/ai
+#   cd hosts/ai/bootstrap
 #   ansible-playbook site.yml
 
 - name: Select ai connection
-  import_playbook: ../../roles/bootstrap/playbook.yml
+  import_playbook: ../../../roles/bootstrap/playbook.yml
   vars:
     bootstrap_inventory_group: ai_hosts
 

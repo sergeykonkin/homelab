@@ -3,11 +3,11 @@
 # overlay-root.
 #
 # Usage:
-#   cd hosts/acme
+#   cd hosts/acme/bootstrap
 #   ansible-playbook site.yml
 
 - name: Select acme connection
-  import_playbook: ../../roles/bootstrap/playbook.yml
+  import_playbook: ../../../roles/bootstrap/playbook.yml
   vars:
     bootstrap_inventory_group: acme_hosts
 

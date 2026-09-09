@@ -1,0 +1,5 @@
+---
+copy_files:
+  - secrets/caddy-acmedns.json
+external_networks:
+  - caddy_litellm

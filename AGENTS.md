@@ -24,16 +24,20 @@ lives in [`docs/tls-ingress.md`](docs/tls-ingress.md).
 | `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL, model updater |
 | `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation and Docker only |
 | `hosts/acme/` | `acme.home.arpa`: Docker host for the ACME-DNS gateway workload |
+| `hosts/<name>/bootstrap/` | Host-specific Ansible project |
+| `hosts/<name>/workloads/` | Compose projects deployed to that host |
 | `roles/bootstrap/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, final reboot |
 | `roles/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
-| `workloads/acme-dns-gateway/` | Homelab certification centre project |
-| `workloads/caddy/` | Per-host TLS ingress: Caddy reverse proxy with DNS-01 issuance |
 | `docs/` | Design documentation |
 
-- Each host is an independent Ansible project: `ansible.cfg`, `inventory.ini`,
-  `site.yml`, local `roles/`, and `secrets/`. There is no root
-  inventory or root playbook. Run Ansible **inside `hosts/<name>/`** so its config
-  resolves `../../roles:./roles` and `../../.vault-pass` correctly.
+- Each host's `bootstrap/` directory is an independent Ansible project containing
+  `ansible.cfg`, `inventory.ini`, `site.yml`, local `roles/`, and `secrets/`.
+  There is no root inventory or root playbook. Run Ansible **inside
+  `hosts/<name>/bootstrap/`** so its config resolves `../../../roles:./roles`
+  and `../../../.vault-pass` correctly.
+- Each `hosts/<name>/workloads/<workload>/` directory is an independent Compose
+  project. Its `deploy.yml` declares copied files and external Docker networks.
+  Workload placement is defined by its host directory.
 - Keep new roles local until a second host needs them, then move them to
   `roles/`; playbooks reference role names. For a new host, follow the existing
   project layout and update the root host table and host README.
@@ -61,12 +65,12 @@ standard-library Python unit test suite under its workload directory.
 
 Run `make init` from the repo root to configure Git's local `core.hooksPath` as
 `hooks`. The Python 3 pre-commit hook requires an Ansible Vault header on indexed
-files under `hosts/*/secrets/` and an ASCII-armored age header on `.vault-pass.age`
+files under `hosts/*/bootstrap/secrets/` and an ASCII-armored age header on `.vault-pass.age`
 and workload `.age` files. It rejects staged plaintext secret files.
 
 ```sh
-# Run from each affected host directory; roles/bootstrap changes affect all hosts.
-cd hosts/ai                    # or hosts/tailgate, hosts/media, or hosts/acme
+# Run from each affected bootstrap directory; shared role changes affect all hosts.
+cd hosts/ai/bootstrap         # or the corresponding directory for another host
 ansible-playbook --syntax-check site.yml
 ansible-lint site.yml  # if installed
 
@@ -78,7 +82,7 @@ Syntax checks use the configured vault password without contacting the hosts.
 They do not verify runtime behavior. `--check` is not a complete deployment
 simulation: command tasks, password-hash results, and generated files depend on
 real execution. Do not run live provisioning merely to validate repository edits.
-For updater edits, use `bash -n workloads/litellm/entrypoint.sh` and
+For updater edits, use `bash -n hosts/ai/workloads/litellm/entrypoint.sh` and
 Python syntax validation from the repo root; exercise model parsing/config/hash
 behavior with fixtures and a temporary `CONFIG_DIR`, avoiding live API calls.
 The shell script requires Bash and GNU `date` inside its Linux container.
@@ -91,10 +95,10 @@ Finish with `git diff --check` and review the changed files.
 
 - `.vault-pass` is ignored and must never be committed or printed. `.vault-pass.age`
   and workload `.age` files are ASCII-armored age ciphertext. All
-  `hosts/*/secrets/vault.yml` files **are tracked** and must start with
+  `hosts/*/bootstrap/secrets/vault.yml` files **are tracked** and must start with
   `$ANSIBLE_VAULT;`. Plaintext vaults are **not** protected by `.gitignore`.
   Check encryption before staging any vault.
-- Use `ansible-vault edit secrets/vault.yml` from the host directory for existing
+- Use `ansible-vault edit secrets/vault.yml` from the host's `bootstrap/` directory for existing
   secrets. The `.example` files define the schema with placeholders; never copy
   one over an existing vault as a routine setup step or expose decrypted values
   in logs, diffs, or replies.
@@ -128,9 +132,9 @@ Finish with `git diff --check` and review the changed files.
   the shared `docker` role with its `fuse-overlayfs` default; no applications
   are configured. Its vault contains only the root and pi passwords.
 - **ACME:** NanoPi Zero2. `site.yml` runs the `docker` role like AI and Media.
-  `make apply workload=acme-dns-gateway` deploys the gateway through the `acme`
+  `make apply host=acme workload=acme-dns-gateway` deploys the gateway through the `acme`
   Docker context. Its vault contains only the root and pi passwords.
-  `make apply` provisions each workload's `copy_files` (from `workloads.yml`)
+  `make apply` provisions each workload's `copy_files` from its `deploy.yml`
   to `/opt/<workload>/` on the target, preserving workload-relative paths
   (root-owned, directories `0700`, files `0400`), and sets `COPY_DIR` so
   Compose mounts those host-side files; Compose `secrets: file:` and
@@ -143,12 +147,12 @@ Finish with `git diff --check` and review the changed files.
   It accepts routes and enables auto-update. `tailscale_exit_node` is
   unused; setting `tailscale_auto_update: false` skips enabling it rather than
   actively disabling it. `tailscale up` always reports changed.
-- **AI:** `site.yml` runs the `docker` role. `make apply workload=litellm`
-  deploys the stack and `make apply workload=caddy` deploys the host's TLS
+- **AI:** `site.yml` runs the `docker` role. `make apply host=ai workload=litellm`
+  deploys the stack and `make apply host=ai workload=caddy` deploys the host's TLS
   ingress. LiteLLM publishes no host port; Caddy terminates TLS for
   `litellm.srjhome.net` on 443 and reverse proxies to `litellm:4000` over the
-  external `caddy_litellm` network, created once per host
-  (`docker --context ai network create caddy_litellm`). See
+  external `caddy_litellm` network, declared in each workload's `deploy.yml`
+  and created by `make apply` when absent. See
   [`docs/tls-ingress.md`](docs/tls-ingress.md).
 - The Compose template defines LiteLLM (`main-stable`), PostgreSQL 16, and a
   Python 3.12 updater image. Preserve persistent volumes `litellm_postgres_data`

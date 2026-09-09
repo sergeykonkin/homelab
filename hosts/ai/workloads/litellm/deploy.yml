@@ -1,0 +1,4 @@
+---
+copy_files: []
+external_networks:
+  - caddy_litellm

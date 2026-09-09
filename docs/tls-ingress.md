@@ -5,13 +5,17 @@ hosts.
 
 ## Overview
 
-Each host that runs HTTPS services has one Caddy container, deployed as the
-`workloads/caddy/` Compose project. Caddy is the only web ingress for that
-host and is responsible for reverse proxying, ACME certificate issuance,
+Each host that runs HTTPS services has one Caddy container. Application hosts
+deploy it from `hosts/<host>/workloads/caddy/`. The ACME host is the exception:
+its Caddy container belongs to the combined
+`hosts/acme/workloads/acme-dns-gateway/` Compose project because certificate
+bootstrap depends on the gateway backend. Caddy is the only web ingress for
+its host and is responsible for reverse proxying, ACME certificate issuance,
 certificate renewal, and TLS private-key storage.
 
-A dedicated private DNS update gateway (`workloads/acme-dns-gateway/`) is the
-only component with automated write access to the public DNS zone. It exposes
+A dedicated private DNS update gateway
+(`hosts/acme/workloads/acme-dns-gateway/`) is the only component with automated
+write access to the public DNS zone. It exposes
 a restricted, acme-dns-compatible update API to ACME clients on the internal
 network. Each client has credentials that authorize updates only to its
 assigned DNS-01 challenge records.
@@ -81,11 +85,14 @@ internet-reachable ports.
 
 ## Host ingress
 
-Caddy runs as the `workloads/caddy/` Compose project, deployed with
-`make apply workload=caddy`. The Caddyfile is baked into the image: build
-contexts cross SSH Docker contexts, bind mounts of control-machine paths do
-not. The Caddyfile renders a single site from `SITE_HOSTNAME` and
-`SITE_UPSTREAM`; serving additional HTTPS services on the same host requires
+On application hosts, Caddy runs as the host's `workloads/caddy/` Compose
+project and is deployed with `make apply host=<host> workload=caddy`. On the
+ACME host, Caddy is deployed with
+`make apply host=acme workload=acme-dns-gateway`; there is no standalone Caddy
+workload on that host. The Caddyfile is baked into the image: build contexts
+cross SSH Docker contexts, bind mounts of control-machine paths do not. The
+Caddyfile renders a single site from `SITE_HOSTNAME` and `SITE_UPSTREAM`;
+serving additional HTTPS services on the same application host requires
 extending the Caddyfile and its environment accordingly.
 
 Caddy is the only web container that publishes a host port:
@@ -126,12 +133,9 @@ Caddy does not join the application network; the database does not join
 `caddy_litellm`. This prevents proxied services from receiving implicit
 network access to each other or to their peers' databases.
 
-Each `caddy_<service>` network is declared `external` in both Compose
-projects and is created once on the target host:
-
-```sh
-docker --context <host> network create caddy_<service>
-```
+Each `caddy_<service>` network is declared `external` in both Compose projects
+and listed in both workloads' `deploy.yml` files. `make apply` creates the
+network when it is absent.
 
 ## Caddy configuration
 
@@ -142,7 +146,8 @@ provider points to the update gateway over HTTPS on the internal network
 credentials; secret values are supplied through a root-readable runtime file
 mounted as a Compose secret.
 
-The client credentials live in `workloads/caddy/secrets/caddy-acmedns.json`.
+The client credentials live in
+`hosts/<host>/workloads/caddy/secrets/caddy-acmedns.json`.
 The plaintext file is gitignored (mode `0600`); its ASCII-armored age
 counterpart is tracked. `make apply` provisions it to
 `/opt/caddy/secrets/caddy-acmedns.json` on the target host through the
@@ -222,7 +227,7 @@ does not recreate containers when only secret file contents change. For the
 gateway:
 
 ```sh
-make apply workload=acme-dns-gateway
+make apply host=acme workload=acme-dns-gateway
 docker --context acme restart acme-dns-gateway
 ```
 
@@ -344,21 +349,22 @@ validation.
 Adding an HTTPS service to a host requires these coordinated changes:
 
 1. Deploy the application without published host ports.
-2. Create the service-specific Caddy Docker network on the host:
-   `docker --context <host> network create caddy_<service>`.
-3. Join the application to that network as `external` in its Compose project;
-   join the caddy project to the same network.
+2. Declare the service-specific `caddy_<service>` external network in both
+   Compose projects and both workloads' `deploy.yml` files.
+3. Join the application and Caddy to that network. `make apply` creates it on
+   the selected host when absent.
 4. Generate a unique client identity (username, password, validation
    subdomain UUID) and add it with the service host's private `address` to
    the gateway's `secrets/gateway.json`; re-encrypt the tracked `.age`
-   file, `make apply workload=acme-dns-gateway`, and restart the gateway
+   file, `make apply host=acme workload=acme-dns-gateway`, and restart the gateway
    container. Reconciliation then creates the service's challenge CNAME
    and A record in Cloudflare.
 5. Store the client credentials as
-   `workloads/caddy/secrets/caddy-acmedns.json` with
+   `hosts/<host>/workloads/caddy/secrets/caddy-acmedns.json` with
    `"server_url": "https://acme.srjhome.net"` and re-encrypt the tracked
    `.age` counterpart.
-6. Set `SITE_HOSTNAME` and `SITE_UPSTREAM` in `workloads/caddy/.env` and
+6. Set `SITE_HOSTNAME` and `SITE_UPSTREAM` in
+   `hosts/<host>/workloads/caddy/.env` and
    start with the Let's Encrypt staging CA.
 7. Apply both workloads and verify staging issuance; switch `ACME_CA` to the
    production directory, re-apply the caddy workload, and verify the service

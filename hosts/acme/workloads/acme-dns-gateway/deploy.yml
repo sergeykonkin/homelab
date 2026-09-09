@@ -1,0 +1,5 @@
+---
+copy_files:
+  - secrets/gateway.json
+  - secrets/caddy-acmedns.json
+external_networks: []

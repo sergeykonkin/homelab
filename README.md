@@ -1,7 +1,8 @@
 # homelab
 
-Ansible source of truth for the hosts on the home network. Each managed host
-lives under `hosts/<name>/`; the repository also contains Compose workloads.
+Ansible and Docker Compose source of truth for the hosts on the home network.
+Each managed host lives under `hosts/<name>/`; host-specific Ansible projects
+live in `bootstrap/` and Docker Compose projects live in `workloads/`.
 
 ## Hosts
 
@@ -33,12 +34,12 @@ configuration and performs at most one reboot after its final tasks.
 ## Apply a workload
 
 ```sh
-make apply workload=litellm
+make apply host=ai workload=litellm
+make apply host=ai workload=all
 ```
 
-[`workloads.yml`](workloads.yml) maps each workload to its permitted deployment
-hosts and required decrypted files. When it lists one host,
-`make apply workload=<name>` selects it. When it lists several, pass
-`host=<name>` or `host=all`; `all` applies the workload to every permitted host.
-`make apply` reads the map with `yq` and drives the target's Docker daemon via
-a context prepared by `make init`.
+Both `host` and `workload` are required. Use `workload=all` to apply every
+Compose project under `hosts/<host>/workloads/`; `host=all` is not supported.
+Each workload's `deploy.yml` lists files copied to `/opt/<workload>/` and
+external Docker networks that must exist. `make apply` drives the selected
+host's Docker daemon through a context prepared by `make init`.
