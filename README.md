@@ -23,15 +23,15 @@ make init
 ```
 
 `make init` decrypts each tracked, ASCII-armored `.age` file to its gitignored
-plaintext counterpart with `~/.age/age.key`. To update an Ansible secret, edit
-`hosts/<host>/ansible/secrets/secrets.yml` and refresh its ciphertext:
+plaintext counterpart with `~/.age/age.key`. To update an Ansible or workload
+secret, edit its plaintext file and re-encrypt the changed files:
 
 ```sh
-recipient="$(age-keygen -y ~/.age/age.key)"
-age --armor --recipient "$recipient" \
-  --output hosts/<host>/ansible/secrets/secrets.yml.age \
-  hosts/<host>/ansible/secrets/secrets.yml
+make encrypt-secrets
 ```
+
+The target encrypts with the public key derived from `~/.age/age.key` and
+rewrites only `.age` files whose plaintext changed.
 
 ## Configure a host
 

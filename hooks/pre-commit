@@ -77,8 +77,8 @@ def main():
 
     if rejected_plaintext or rejected_age:
         print(
-            "Use age --armor for Ansible and workload .age files, and keep plaintext "
-            "secret files out of Git.",
+            "Run make encrypt-secrets to refresh .age ciphertext with age --armor, "
+            "and keep plaintext secret files out of Git.",
             file=sys.stderr,
         )
         return 1

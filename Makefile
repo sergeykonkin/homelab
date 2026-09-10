@@ -2,7 +2,7 @@ SHELL := /bin/sh
 
 AGE_IDENTITY ?= $(HOME)/.age/age.key
 
-.PHONY: init hooks decrypt-secrets docker-contexts deploy bootstrap check-health help
+.PHONY: init hooks decrypt-secrets encrypt-secrets docker-contexts deploy bootstrap check-health help
 
 # Healthcheck machinery lives in healthz.mk (shared shell helpers);
 # each host adds its own checks in hosts/<name>/healthz.mk, which appends
@@ -32,6 +32,28 @@ decrypt-secrets: ## Decrypt Ansible and workload secret files
 			mv "$$temporary" "$$target"; \
 		fi; \
 		chmod 600 "$$target"; \
+		trap - EXIT HUP INT TERM; \
+	done
+
+encrypt-secrets: ## Re-encrypt edited plaintext secrets into their tracked .age files
+	@command -v age >/dev/null || { echo "age is required" >&2; exit 1; }
+	@command -v age-keygen >/dev/null || { echo "age-keygen is required" >&2; exit 1; }
+	@test -f "$(AGE_IDENTITY)" || { echo "age identity not found: $(AGE_IDENTITY)" >&2; exit 1; }
+	@set -eu; \
+	recipient=$$(age-keygen -y "$(AGE_IDENTITY)"); \
+	for encrypted in $$(find hosts -type f -name '*.age' | sort); do \
+		plaintext=$${encrypted%.age}; \
+		[ -f "$$plaintext" ] || { echo "encrypt-secrets: skipping $$encrypted (missing plaintext)" >&2; continue; }; \
+		temporary=$$(mktemp "$${encrypted}.XXXXXX"); \
+		trap 'rm -f "$$temporary"' EXIT HUP INT TERM; \
+		chmod 600 "$$temporary"; \
+		if age --decrypt --identity "$(AGE_IDENTITY)" --output "$$temporary" "$$encrypted" 2>/dev/null && cmp -s "$$temporary" "$$plaintext"; then \
+			rm -f "$$temporary"; \
+		else \
+			rm -f "$$temporary"; \
+			age --armor --encrypt --recipient "$$recipient" --output "$$temporary" "$$plaintext"; \
+			mv "$$temporary" "$$encrypted"; \
+		fi; \
 		trap - EXIT HUP INT TERM; \
 	done
 

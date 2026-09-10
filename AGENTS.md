@@ -103,8 +103,9 @@ Finish with `git diff --check` and review the changed files.
 
 - Ansible and workload `.age` files are tracked ASCII-armored age ciphertext.
   Their counterparts without `.age` are ignored plaintext files produced by
-  `make init`. Encrypt edited plaintext with `age --armor` and the public key
-  derived from `~/.age/age.key`.
+  `make init`. Run `make encrypt-secrets` to re-encrypt edited plaintext with
+  `age --armor` and the public key derived from `~/.age/age.key`; it rewrites
+  only `.age` files whose decrypted content differs.
 - The Ansible `.example` files define the schema with placeholders. Ansible host
   secrets contain `bootstrap_root_password` and `bootstrap_pi_password`; Tailgate
   also has `tailscale_auth_key`. Preserve `no_log: true` on secret-bearing tasks
