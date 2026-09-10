@@ -120,10 +120,10 @@
     mode: "0644"
   notify: Restart journald
 
-# --- sshd hardening (key-only auth) ----------------------------------------
-# Done AFTER the key is dropped and AFTER passwords are changed, so we never
-# lock ourselves out: by the time password auth is disabled, the pubkey is in
-# place and the new passwords are set (for console/serial access).
+# --- sshd hardening ----------------------------------------------------------
+# Root login is key-only; password auth stays enabled. Ordered after the
+# pubkey and password tasks so access is never narrowed before the
+# replacement credentials are in place.
 
 - name: Ensure /etc/ssh/sshd_config.d exists
   ansible.builtin.file:
@@ -133,7 +133,7 @@
     group: root
     mode: "0755"
 
-- name: Add sshd hardening config (key-only auth)
+- name: Add sshd hardening config
   ansible.builtin.template:
     src: sshd-hardening.conf.j2
     dest: /etc/ssh/sshd_config.d/00-homelab-hardening.conf

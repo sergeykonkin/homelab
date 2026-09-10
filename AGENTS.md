@@ -117,11 +117,12 @@ Finish with `git diff --check` and review the changed files.
   switches the remaining sudo tasks to the new pi password. Password hashes are
   generated on-target with `openssl passwd -stdin`, so the passwords never
   appear in process arguments.
-- Install the configured root public key before disabling password SSH. Preserve
-  the `00-homelab-hardening.conf` drop-in, `/run/sshd` creation plus `sshd -t`
-  before restarting SSH, and handler flush before reboot. Reboot reconnects as
-  root using public-key authentication. Ensure the control machine has the
-  private key matching `bootstrap_pubkey` before provisioning.
+- Install the configured root public key before any sshd restart. Preserve
+  the `00-homelab-hardening.conf` drop-in (root login key-only, password auth
+  left enabled), `/run/sshd` creation plus `sshd -t` before restarting SSH,
+  and handler flush before reboot. Reboot reconnects as root using public-key
+  authentication. Ensure the control machine has the private key matching
+  `bootstrap_pubkey` before provisioning.
 - `site.yml` applies access configuration, host roles, and a final reboot in one
   run. Per-host configs disable SSH host-key checking.
 - NanoPi's root filesystem is overlayfs: Docker needs **fuse-overlayfs**, since
