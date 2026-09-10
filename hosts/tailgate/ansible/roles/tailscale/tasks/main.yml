@@ -40,7 +40,7 @@
 # --- IP forwarding (required for subnet routing) ---------------------------
 
 - name: Enable IPv4 forwarding
-  ansible.builtin.sysctl:
+  ansible.posix.sysctl:
     name: net.ipv4.ip_forward
     value: "1"
     sysctl_file: /etc/sysctl.d/99-tailscale.conf
@@ -48,7 +48,7 @@
     state: present
 
 - name: Enable IPv6 forwarding
-  ansible.builtin.sysctl:
+  ansible.posix.sysctl:
     name: net.ipv6.conf.all.forwarding
     value: "1"
     sysctl_file: /etc/sysctl.d/99-tailscale.conf

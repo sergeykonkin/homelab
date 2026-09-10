@@ -1,6 +1,11 @@
+import contextlib
+import hashlib
 import importlib.util
+import io
+import os
 import pathlib
 import sys
+import tempfile
 import unittest
 
 
@@ -57,6 +62,90 @@ class FetchModelsFilterTests(unittest.TestCase):
             if update_config.is_text_model(m.get("architecture", {}).get("modality", ""))
         ]
         self.assertEqual([m["id"] for m in kept], ["nebius/keep-1", "nebius/keep-2"])
+
+
+class MainTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        update_config.CONFIG_DIR = self.tmp.name
+        update_config.CONFIG_PATH = os.path.join(self.tmp.name, "config.yaml")
+        update_config.HASH_PATH = os.path.join(self.tmp.name, "config.yaml.sha256sum")
+        self.addCleanup(setattr, update_config, "fetch_models", update_config.fetch_models)
+        os.environ["NEBIUS_API_KEY"] = "test-key"
+        self.addCleanup(os.environ.pop, "NEBIUS_API_KEY", None)
+
+    def config_text(self):
+        return pathlib.Path(update_config.CONFIG_PATH).read_text()
+
+    def hash_text(self):
+        return pathlib.Path(update_config.HASH_PATH).read_text()
+
+    def run_ok(self, models):
+        update_config.fetch_models = lambda _key: list(models)
+        with contextlib.redirect_stdout(io.StringIO()):
+            update_config.main()
+
+    def run_fail(self, models):
+        update_config.fetch_models = lambda _key: list(models)
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            with self.assertRaises(SystemExit) as ctx:
+                update_config.main()
+        self.assertEqual(ctx.exception.code, 1)
+
+    def test_writes_config_and_hash_on_first_run(self):
+        self.run_ok([model("org/model-a", "text->text")])
+        self.assertIn("model-a", self.config_text())
+        digest = hashlib.sha256(self.config_text().encode()).hexdigest()
+        self.assertEqual(self.hash_text(), digest)
+
+    def test_no_changes_when_config_and_hash_match(self):
+        models = [model("org/model-a", "text->text")]
+        self.run_ok(models)
+        update_config.fetch_models = lambda _key: list(models)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            update_config.main()
+        self.assertIn("No changes", out.getvalue())
+
+    def test_empty_catalog_preserves_existing_config(self):
+        self.run_ok([model("org/model-a", "text->text")])
+        content, digest = self.config_text(), self.hash_text()
+        self.run_fail([])
+        self.assertEqual(self.config_text(), content)
+        self.assertEqual(self.hash_text(), digest)
+
+    def test_empty_catalog_on_empty_volume_writes_nothing(self):
+        self.run_fail([])
+        self.assertFalse(os.path.exists(update_config.CONFIG_PATH))
+        self.assertFalse(os.path.exists(update_config.HASH_PATH))
+
+    def test_regenerates_deleted_config_despite_matching_hash(self):
+        models = [model("org/model-a", "text->text")]
+        self.run_ok(models)
+        content = self.config_text()
+        os.unlink(update_config.CONFIG_PATH)
+        self.run_ok(models)
+        self.assertEqual(self.config_text(), content)
+
+    def test_repairs_corrupted_config_despite_matching_hash(self):
+        models = [model("org/model-a", "text->text")]
+        self.run_ok(models)
+        content = self.config_text()
+        pathlib.Path(update_config.CONFIG_PATH).write_text("garbage")
+        self.run_ok(models)
+        self.assertEqual(self.config_text(), content)
+
+    def test_regenerates_missing_hash_alongside_matching_config(self):
+        models = [model("org/model-a", "text->text")]
+        self.run_ok(models)
+        os.unlink(update_config.HASH_PATH)
+        self.run_ok(models)
+        digest = hashlib.sha256(self.config_text().encode()).hexdigest()
+        self.assertEqual(self.hash_text(), digest)
 
 
 if __name__ == "__main__":

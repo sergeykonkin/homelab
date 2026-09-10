@@ -1,6 +1,7 @@
 ---
-# shared_roles/docker — install Docker + compose plugin and configure fuse-overlayfs
-# (the default overlay2 driver won't nest on the NanoPi's overlay-root).
+# shared_roles/docker — install Docker + compose plugin, configure fuse-overlayfs
+# (the default overlay2 driver won't nest on the NanoPi's overlay-root), and
+# bound container log growth.
 
 # fuse-overlayfs needs the fuse-overlayfs binary + fuse support in kernel.
 # (Debian Trixie arm64 NanoPi image has fuse; the binary is in apt.)
@@ -21,15 +22,22 @@
     group: root
     mode: "0755"
 
-- name: Configure Docker storage driver (fuse-overlayfs)
+- name: Configure Docker daemon (storage driver, log rotation)
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json
     owner: root
     group: root
     mode: "0644"
+    # journald already keeps its own logs in volatile RAM, but json-file
+    # container logs live on disk and never rotate without explicit limits.
     content: |
       {
-        "storage-driver": "{{ docker_storage_driver }}"
+        "storage-driver": "{{ docker_storage_driver }}",
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "{{ docker_log_max_size }}",
+          "max-file": "{{ docker_log_max_file }}"
+        }
       }
   notify: Restart docker
 

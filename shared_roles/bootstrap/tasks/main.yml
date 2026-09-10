@@ -51,10 +51,13 @@
 # Hash with SHA-512 crypt via the target's openssl (3.x), so no passlib/crypt
 # dependency is needed on the control machine or the target. The hash is
 # generated on the target (where it'll be used) and fed to ansible.builtin.user.
+# Passwords go to openssl on stdin (-stdin) so they never appear in process
+# arguments, where local processes could observe them during provisioning.
 
 - name: Generate root password hash (on target)
   ansible.builtin.command:
-    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-root", "{{ bootstrap_root_password }}"]
+    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-root", -stdin]
+    stdin: "{{ bootstrap_root_password }}"
   register: bootstrap_root_hash
   changed_when: false
   no_log: true
@@ -67,7 +70,8 @@
 
 - name: Generate pi password hash (on target)
   ansible.builtin.command:
-    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-pi", "{{ bootstrap_pi_password }}"]
+    argv: [openssl, passwd, -6, -salt, "{{ base_hostname }}-pi", -stdin]
+    stdin: "{{ bootstrap_pi_password }}"
   register: bootstrap_pi_hash
   changed_when: false
   no_log: true

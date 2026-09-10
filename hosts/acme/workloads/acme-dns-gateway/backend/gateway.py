@@ -193,7 +193,7 @@ def parse_client(raw: object, zone_name: str, validation_zone: str) -> Client:
         raise ConfigurationError("client hostname is outside zone_name")
     if not USERNAME_PATTERN.fullmatch(username):
         raise ConfigurationError("client username is invalid")
-    if len(password) < 32 or len(password) > 256:
+    if not password.isascii() or len(password) < 32 or len(password) > 256:
         raise ConfigurationError("client password is invalid")
     if not SUBDOMAIN_PATTERN.fullmatch(subdomain):
         raise ConfigurationError("client subdomain is invalid")
@@ -386,6 +386,18 @@ def parse_cloudflare_time(value: object) -> datetime.datetime:
     return timestamp
 
 
+def safe_compare(provided: object, expected: str) -> bool:
+    """Constant-time string comparison that fails closed on non-ASCII input.
+
+    hmac.compare_digest rejects str values containing non-ASCII characters.
+    Header values arrive decoded as ISO-8859-1 and JSON payloads can carry
+    arbitrary Unicode, so gate both sides on ASCII instead of raising.
+    """
+    if not isinstance(provided, str) or not provided.isascii() or not expected.isascii():
+        return False
+    return hmac.compare_digest(provided, expected)
+
+
 class GatewayState:
     def __init__(self, config: Config, updater: CloudflareUpdater):
         self.config = config
@@ -396,7 +408,7 @@ class GatewayState:
     def authenticate(self, source: str, username: str, password: str) -> Client | None:
         client = self.config.clients.get(username)
         expected_password = client.password if client is not None else "\0" * 32
-        valid = hmac.compare_digest(expected_password, password) and client is not None
+        valid = safe_compare(password, expected_password) and client is not None
         if valid:
             return client
         if not self.auth_failures.allow(source):
@@ -446,7 +458,7 @@ class GatewayHandler(http.server.BaseHTTPRequestHandler):
             return
         subdomain = payload.get("subdomain")
         txt = payload.get("txt")
-        if not isinstance(subdomain, str) or not hmac.compare_digest(subdomain, client.subdomain):
+        if not safe_compare(subdomain, client.subdomain):
             self.send_json(403, {"error": "forbidden"})
             return
         if not isinstance(txt, str) or not TXT_PATTERN.fullmatch(txt):

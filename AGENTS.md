@@ -105,7 +105,9 @@ Finish with `git diff --check` and review the changed files.
 
 - `site.yml` connects with root SSH-key authentication when available; otherwise it
   connects as **`pi:pi`**, becomes root with sudo, changes both passwords, and
-  switches the remaining sudo tasks to the new pi password.
+  switches the remaining sudo tasks to the new pi password. Password hashes are
+  generated on-target with `openssl passwd -stdin`, so the passwords never
+  appear in process arguments.
 - Install the configured root public key before disabling password SSH. Preserve
   the `00-homelab-hardening.conf` drop-in, `/run/sshd` creation plus `sshd -t`
   before restarting SSH, and handler flush before reboot. Reboot reconnects as
@@ -118,6 +120,8 @@ Finish with `git diff --check` and review the changed files.
   Docker and Tailscale apt URLs derive distribution/release from gathered facts;
   Docker's repository architecture is explicitly arm64. Preserve deb822 Python
   dependency installation and the apt-cache refresh after adding repositories.
+  The daemon config also bounds json-file container logs (`max-size`/`max-file`),
+  because journald's volatile limits do not cover those files.
 
 ## Host-specific behavior
 
@@ -156,11 +160,19 @@ Finish with `git diff --check` and review the changed files.
   `models?verbose=1`, filters models that accept text input and produce text
   output (`text->text` and `text+image->text`; not `text->embedding` or
   `text->text+image`), writes model names/provider IDs/pricing
-  plus `drop_params: true`, and uses SHA-256 to skip unchanged writes.
-  `config.yaml` and its hash are generated in the shared volume, not deployed
+  plus `drop_params: true`, and rejects an empty catalog so a transient empty
+  response cannot wipe the working configuration. It skips unchanged writes by
+  comparing SHA-256 of the generated content against `config.yaml` itself —
+  regenerating the file when it is missing or corrupted despite a matching
+  stored hash — and publishes replacements atomically. `config.yaml` and its
+  hash are generated in the shared volume, not deployed
   from Git. `entrypoint.sh` creates the directory, updates at startup, then
-  runs daily at 04:20 in the container's timezone. It restarts `litellm` on any
-  config change, including the initial build. Preserve this startup ordering.
+  runs daily at 04:20 in the container's timezone. It retries the startup
+  update until a usable configuration exists — an empty config volume would
+  otherwise leave LiteLLM's healthy-updater dependency unmet — and restarts
+  `litellm` on any config change, including the initial build, tracking the
+  applied config hash separately so a failed restart is retried. Preserve this
+  startup ordering.
 - The updater's Docker socket mount is marked `:ro` and permits Docker
   API mutations (including its restart command); treat it as privileged access.
   `open-webui` and a shared external Docker network are planned, not implemented.

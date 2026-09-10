@@ -6,5 +6,11 @@
 # fuse-overlayfs.
 docker_storage_driver: fuse-overlayfs
 
+# Bound container log growth. journald keeps its logs in volatile RAM, but
+# Docker's json-file container logs live on disk and grow without limit
+# unless the daemon rotates them.
+docker_log_max_size: 10m
+docker_log_max_file: "3"
+
 # No shared external Docker network is created. Ingress workloads create any
 # shared external network required by Compose workloads on the host.

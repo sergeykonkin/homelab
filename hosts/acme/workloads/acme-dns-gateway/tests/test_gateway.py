@@ -112,6 +112,31 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(gateway.ConfigurationError):
             gateway.Config.from_dict(raw)
 
+    def test_rejects_non_ascii_client_password(self):
+        # HTTP header values are decoded as ISO-8859-1, so a non-ASCII secret
+        # would be unreliable on the wire; reject it at load time.
+        raw = config_dict()
+        raw["clients"][0]["password"] = "p" * 31 + "é"
+        with self.assertRaises(gateway.ConfigurationError):
+            gateway.Config.from_dict(raw)
+
+
+class SafeCompareTests(unittest.TestCase):
+    def test_matches_identical_ascii(self):
+        self.assertTrue(gateway.safe_compare("secret-value", "secret-value"))
+
+    def test_rejects_different_ascii(self):
+        self.assertFalse(gateway.safe_compare("secret-value", "secret-valuf"))
+
+    def test_fails_closed_on_non_ascii_either_side(self):
+        self.assertFalse(gateway.safe_compare("sécret", "secret"))
+        self.assertFalse(gateway.safe_compare("secret", "sécret"))
+        self.assertFalse(gateway.safe_compare("sécret", "sécret"))
+
+    def test_rejects_non_string_input(self):
+        self.assertFalse(gateway.safe_compare(None, "secret"))
+        self.assertFalse(gateway.safe_compare(42, "secret"))
+
 
 class LimiterTests(unittest.TestCase):
     def test_sliding_window_expires_events(self):
@@ -368,6 +393,21 @@ class HttpTests(unittest.TestCase):
         status, _ = self.request("POST", "/update", {"subdomain": "other", "txt": TOKEN_A})
         self.assertEqual(status, 403)
         self.assertEqual(self.updater.calls, [])
+
+    def test_rejects_non_ascii_subdomain(self):
+        status, _ = self.request(
+            "POST", "/update", {"subdomain": "gateway-válidation", "txt": TOKEN_A}
+        )
+        self.assertEqual(status, 403)
+        self.assertEqual(self.updater.calls, [])
+
+    def test_non_ascii_api_key_counts_as_auth_failure(self):
+        # hmac.compare_digest raises on non-ASCII str; the handler must fail
+        # closed and keep serving, so rate limiting still applies.
+        password = "p" * 31 + "é"
+        self.assertEqual(self.request("POST", "/update", {}, password=password)[0], 401)
+        self.assertEqual(self.request("POST", "/update", {}, password=password)[0], 401)
+        self.assertEqual(self.request("POST", "/update", {}, password=password)[0], 429)
 
     def test_rejects_invalid_challenge_value(self):
         status, _ = self.request(

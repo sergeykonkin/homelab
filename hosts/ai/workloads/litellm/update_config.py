@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 
@@ -76,6 +77,54 @@ def build_config(models: list[dict]) -> str:
     return content
 
 
+def atomic_write(path: str, content: str) -> None:
+    """Publish content to path atomically via a temporary sibling file."""
+    fd, tmp_path = tempfile.mkstemp(dir=CONFIG_DIR, prefix=".tmp-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def publish_config(content: str) -> bool:
+    """Write content and its hash unless the on-disk config already matches.
+
+    The stored hash is trusted only together with the config file itself:
+    if config.yaml was deleted or corrupted while its hash survived, the
+    config is regenerated. Returns True when the files were (re)written.
+    """
+    sha = hashlib.sha256(content.encode()).hexdigest()
+
+    current_sha = ""
+    try:
+        with open(CONFIG_PATH, "rb") as f:
+            current_sha = hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        pass
+
+    stored_sha = ""
+    try:
+        with open(HASH_PATH) as f:
+            stored_sha = f.read().strip()
+    except OSError:
+        pass
+
+    if current_sha == sha and stored_sha == sha:
+        return False
+
+    atomic_write(CONFIG_PATH, content)
+    atomic_write(HASH_PATH, sha)
+    return True
+
+
 def main() -> None:
     try:
         api_key = os.environ["NEBIUS_API_KEY"]
@@ -88,28 +137,28 @@ def main() -> None:
     except Exception:
         sys.exit(1)
 
+    if not models:
+        # A transient empty response or missing modality metadata must not
+        # wipe the working configuration.
+        print(
+            "Error: Nebius API returned no usable text models; keeping existing config",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     try:
         content = build_config(models)
     except (KeyError, TypeError) as e:
         print(f"Error building config from model data: {e}", file=sys.stderr)
         sys.exit(1)
 
-    sha = hashlib.sha256(content.encode()).hexdigest()
+    try:
+        changed = publish_config(content)
+    except OSError as e:
+        print(f"Error writing config: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    old_sha = ""
-    if os.path.exists(HASH_PATH):
-        with open(HASH_PATH) as f:
-            old_sha = f.read().strip()
-
-    if sha != old_sha:
-        try:
-            with open(CONFIG_PATH, "w") as f:
-                f.write(content)
-            with open(HASH_PATH, "w") as f:
-                f.write(sha)
-        except OSError as e:
-            print(f"Error writing config: {e}", file=sys.stderr)
-            sys.exit(1)
+    if changed:
         print(f"Updated {CONFIG_PATH} with {len(models)} models (changed)")
     else:
         print(f"No changes ({len(models)} models, same as before)")
