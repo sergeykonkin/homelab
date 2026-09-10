@@ -3,3 +3,5 @@ copy_files:
   - secrets/caddy-acmedns.json
 external_networks:
   - caddy_litellm
+health_checks:
+  - https://litellm.srjhome.net/health/liveliness

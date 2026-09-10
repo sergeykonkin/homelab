@@ -37,7 +37,10 @@ acme.example.com
 Resolvers with DNS rebind protection need a one-time whitelist for the
 zone. Caddy publishes `443` on all interfaces and proxies `POST /update`
 to the gateway backend, which authenticates each request with its
-configured per-client credentials.
+configured per-client credentials. It also proxies unauthenticated
+`GET /health` to the backend's liveness endpoint and answers 404 to
+everything else. `make check-health host=acme` probes the `health_checks` URL
+declared in `deploy.yml` to verify the TLS and proxy path end to end.
 
 Deploy from the repository root:
 

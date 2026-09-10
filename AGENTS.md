@@ -26,6 +26,8 @@ lives in [`docs/tls-ingress.md`](docs/tls-ingress.md).
 | `hosts/acme/` | `acme.home.arpa`: Docker host for the ACME-DNS gateway workload |
 | `hosts/<name>/ansible/` | Host-specific Ansible project |
 | `hosts/<name>/workloads/` | Compose projects deployed to that host |
+| `hosts/<name>/healthz.mk` | Host healthcheck target included by the root Makefile |
+| `healthz.mk` | Shell helpers shared by the per-host healthcheck targets |
 | `shared_roles/bootstrap/` | Passwords, root SSH key, hostname, apt upgrade, RAM logs, SSH hardening, final reboot |
 | `shared_roles/docker/` | Docker CE/Compose installation and fuse-overlayfs configuration |
 | `docs/` | Design documentation |
@@ -36,7 +38,8 @@ lives in [`docs/tls-ingress.md`](docs/tls-ingress.md).
   `hosts/<name>/ansible/`** so its config resolves `../../../shared_roles:./roles`
   correctly.
 - Each `hosts/<name>/workloads/<workload>/` directory is an independent Compose
-  project. Its `deploy.yml` declares copied files and external Docker networks.
+  project. Its `deploy.yml` declares copied files, external Docker networks,
+  and the HTTP `health_checks` URLs probed by `make check-health`.
   Workload placement is defined by its host directory.
 - Keep new roles local until a second host needs them, then move them to
   `shared_roles/`; playbooks reference role names. For a new host, follow the existing
@@ -81,6 +84,12 @@ Syntax checks use the plaintext files produced by `make init` without contacting
 the hosts. They do not verify runtime behavior. `--check` is not a complete deployment
 simulation: command tasks, password-hash results, and generated files depend on
 real execution. Do not run live provisioning merely to validate repository edits.
+`make check-health [host=<name>|all] [workload=<name>]` is a read-only healthcheck of
+live hosts and workloads; on failure it reports the failed checks' count and
+hosts and exits non-zero.
+Its per-host logic lives in `hosts/<name>/healthz.mk` (included by the root
+Makefile), with shared shell helpers in the root `healthz.mk`
+`HEALTHZ_HELPERS` define.
 For updater edits, use `bash -n hosts/ai/workloads/litellm/entrypoint.sh` and
 Python syntax validation from the repo root; exercise model parsing/config/hash
 behavior with fixtures and a temporary `CONFIG_DIR`, avoiding live API calls.
@@ -141,6 +150,9 @@ Finish with `git diff --check` and review the changed files.
   restart the affected container to reload secret-bearing processes.
   `make deploy` accepts `force_recreate=<bool>` to pass `--force-recreate` to
   Compose, recreating containers whose images and configuration are unchanged.
+  The gateway's Caddy reverse-proxies unauthenticated `GET /health` to the
+  backend alongside `POST /update`; `make check-health` probes it through the
+  workload's declared `health_checks`.
 - **Tailgate:** enables IPv4/IPv6 forwarding and advertises `10.4.0.0/24`
   (management), `10.4.1.0/24` (trusted), and `10.4.4.0/24` (isolated). Route approval
   in the Tailscale admin console is a manual prerequisite for usable routing.

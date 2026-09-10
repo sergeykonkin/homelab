@@ -2,7 +2,13 @@ SHELL := /bin/sh
 
 AGE_IDENTITY ?= $(HOME)/.age/age.key
 
-.PHONY: init hooks decrypt-secrets docker-contexts deploy bootstrap help
+.PHONY: init hooks decrypt-secrets docker-contexts deploy bootstrap check-health help
+
+# Healthcheck machinery lives in healthz.mk (shared shell helpers);
+# each host adds its own checks in hosts/<name>/healthz.mk, which appends
+# to HEALTHZ_HOSTS and defines a healthz-<name> target invoked by `make check-health`.
+include healthz.mk $(wildcard hosts/*/healthz.mk)
+
 
 init: hooks decrypt-secrets docker-contexts ## Prepare local secrets, Git hooks, and Docker contexts
 
@@ -95,6 +101,46 @@ deploy: ## Build and deploy a workload; pass host=<name> workload=<name>|all [fo
 		[ ! -f "$$workloads_dir/caddy/compose.yaml" ] || deploy_one caddy; \
 	else \
 		deploy_one "$(workload)"; \
+	fi
+
+check-health: ## Healthcheck hosts and workloads; pass [host=<name>|all] [workload=<name>]
+	@command -v yq >/dev/null || { echo "yq is required" >&2; exit 1; }
+	@command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
+	@command -v dig >/dev/null || { echo "dig is required" >&2; exit 1; }
+	@set -u; \
+	sel_host="$(host)"; sel_wl="$(workload)"; \
+	[ -n "$$sel_host" ] || sel_host=all; \
+	if [ "$$sel_host" = "all" ]; then \
+		[ -z "$$sel_wl" ] || { echo "make check-health: workload= requires a specific host" >&2; exit 1; }; \
+		host_list="$(HEALTHZ_HOSTS)"; \
+	else \
+		case " $(HEALTHZ_HOSTS) " in \
+			*" $$sel_host "*) : ;; \
+			*) echo "unknown host: $$sel_host" >&2; exit 1 ;; \
+		esac; \
+		if [ -n "$$sel_wl" ]; then \
+			[ -f "hosts/$$sel_host/workloads/$$sel_wl/compose.yaml" ] || { echo "unknown workload for $$sel_host: $$sel_wl" >&2; exit 1; }; \
+		fi; \
+		host_list=$$sel_host; \
+	fi; \
+	faildir=$$(mktemp -d "$${TMPDIR:-/tmp}/homelab-healthz.XXXXXX"); \
+	trap 'rm -rf "$$faildir"' EXIT; \
+	rc=0; \
+	for h in $$host_list; do \
+		$(MAKE) --no-print-directory "healthz-$$h" HEALTHZ_FAILFILE="$$faildir/$$h" || rc=1; \
+	done; \
+	if [ "$$rc" -eq 0 ]; then \
+		echo "check-health: all checks passed"; \
+	else \
+		count=$$(cat "$$faildir"/* 2>/dev/null | wc -l | tr -d ' '); \
+		bad_hosts=$$(for h in $$host_list; do [ -s "$$faildir/$$h" ] && printf '%s, ' "$$h"; done); \
+		if [ -n "$$bad_hosts" ]; then \
+			[ "$$count" -eq 1 ] && s= || s=s; \
+			echo "check-health: $$count check$$s failed on $${bad_hosts%, }" >&2; \
+		else \
+			echo "check-health: failed (see errors above)" >&2; \
+		fi; \
+		exit 1; \
 	fi
 
 bootstrap: ## Configure a host; pass host=<name> [ansible_args="..."]

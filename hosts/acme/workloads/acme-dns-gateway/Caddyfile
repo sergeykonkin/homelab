@@ -9,6 +9,14 @@
 		resolvers 1.1.1.1 1.0.0.1
 	}
 
+	@health {
+		path /health
+		method GET
+	}
+	handle @health {
+		reverse_proxy gateway:8080
+	}
+
 	@allowed_update {
 		path /update
 		method POST

@@ -63,3 +63,22 @@ accepts the same boolean values as `docker compose up --force-recreate`:
 ```sh
 make deploy host=acme workload=acme-dns-gateway force_recreate=true
 ```
+
+## Healthcheck hosts and workloads
+
+```sh
+make check-health                           # every host and workload
+make check-health host=ai                   # one host and all its workloads
+make check-health host=ai workload=caddy    # one workload on one host
+```
+
+`make check-health` is read-only. It checks SSH access, the Docker context and
+daemon, every Compose service's container (running, and healthy when the
+service defines a healthcheck), and the HTTP `health_checks` URLs declared
+in each workload's `deploy.yml`. Tailgate is checked as a subnet router:
+`tailscaled` active, the Tailscale backend running, and its role's
+advertise routes configured. Host-specific checks live in
+`hosts/<host>/healthz.mk`, included by the root Makefile alongside the shared
+helpers in `healthz.mk`. The command prints
+each check's result and, when any check fails, reports the failed checks'
+count and hosts and exits non-zero.

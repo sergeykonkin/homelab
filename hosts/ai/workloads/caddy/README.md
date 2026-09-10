@@ -37,3 +37,7 @@ directory for validation.
 
 ACME account data and certificates persist in the `caddy_data` volume on the
 host; Caddy renews certificates automatically.
+
+`deploy.yml` declares the workload's `health_checks`: an unauthenticated
+HTTPS GET of LiteLLM's liveness endpoint through this Caddy. `make
+check-health host=ai workload=caddy` verifies the container and that URL.
