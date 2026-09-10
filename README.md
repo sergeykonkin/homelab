@@ -54,3 +54,12 @@ Compose project under `hosts/<host>/workloads/`; `host=all` is not supported.
 Each workload's `deploy.yml` lists files copied to `/opt/<workload>/` and
 external Docker networks that must exist. `make deploy` drives the selected
 host's Docker daemon through a context prepared by `make init`.
+
+Pass `force_recreate=true` to recreate containers even when their images and
+configuration are unchanged — for example to pick up Docker daemon changes such
+as log rotation limits, which Docker applies only at container creation. It
+accepts the same boolean values as `docker compose up --force-recreate`:
+
+```sh
+make deploy host=acme workload=acme-dns-gateway force_recreate=true
+```

@@ -40,9 +40,9 @@ docker-contexts: ## Create or update Docker contexts for managed Docker hosts
 		fi; \
 	done
 
-deploy: ## Build and deploy a workload; pass host=<name> workload=<name>|all
-	@test -n "$(host)" || { echo "usage: make deploy host=<host> workload=<workload>|all" >&2; exit 1; }
-	@test -n "$(workload)" || { echo "usage: make deploy host=<host> workload=<workload>|all" >&2; exit 1; }
+deploy: ## Build and deploy a workload; pass host=<name> workload=<name>|all [force_recreate=true]
+	@test -n "$(host)" || { echo "usage: make deploy host=<host> workload=<workload>|all [force_recreate=true]" >&2; exit 1; }
+	@test -n "$(workload)" || { echo "usage: make deploy host=<host> workload=<workload>|all [force_recreate=true]" >&2; exit 1; }
 	@test "$(host)" != "all" || { echo "host=all is not supported; select one host" >&2; exit 1; }
 	@test -f "hosts/$(host)/ansible/site.yml" || { echo "unknown host: $(host)" >&2; exit 1; }
 	@command -v yq >/dev/null || { echo "yq is required" >&2; exit 1; }
@@ -50,6 +50,11 @@ deploy: ## Build and deploy a workload; pass host=<name> workload=<name>|all
 	target="$(host)"; \
 	workloads_dir="hosts/$$target/workloads"; \
 	docker context inspect "$$target" >/dev/null 2>&1 || { echo "Docker context unavailable for $$target; run make init" >&2; exit 1; }; \
+	case "$(force_recreate)" in \
+		1|t|T|true|TRUE|True) force_args="--force-recreate" ;; \
+		""|0|f|F|false|FALSE|False) force_args="" ;; \
+		*) echo "invalid force_recreate: $(force_recreate) (accepts the same booleans as docker compose --force-recreate)" >&2; exit 1 ;; \
+	esac; \
 	deploy_one() { \
 		name="$$1"; \
 		workload_dir="$$workloads_dir/$$name"; \
@@ -79,7 +84,7 @@ deploy: ## Build and deploy a workload; pass host=<name> workload=<name>|all
 				ssh "root@$$target.home.arpa" "chmod 0400 '$$copy_dir'/$$copy_file"; \
 			done; \
 		fi; \
-		COPY_DIR="$$copy_dir" docker --context "$$target" compose $$env_args --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build; \
+		COPY_DIR="$$copy_dir" docker --context "$$target" compose $$env_args --project-directory "$$workload_dir" -f "$$workload_dir/compose.yaml" up -d --build $$force_args; \
 	}; \
 	if [ "$(workload)" = "all" ]; then \
 		for workload_dir in "$$workloads_dir"/*; do \
@@ -98,4 +103,4 @@ bootstrap: ## Configure a host; pass host=<name> [ansible_args="..."]
 	@cd "hosts/$(host)/ansible" && ansible-playbook site.yml $(ansible_args)
 
 help: ## Show available Make targets
-	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target> [host=<name>] [workload=<name>|all]\n\nTargets:\n" } /^[[:alnum:]_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target> [host=<name>] [workload=<name>|all] [force_recreate=true]\n\nTargets:\n" } /^[[:alnum:]_-]+:.*##/ { printf "  %-18s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)

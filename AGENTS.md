@@ -139,6 +139,8 @@ Finish with `git diff --check` and review the changed files.
   bind-mount paths resolve on the client and cannot cross SSH Docker
   contexts. Updating `copy_files` contents does not recreate containers;
   restart the affected container to reload secret-bearing processes.
+  `make deploy` accepts `force_recreate=<bool>` to pass `--force-recreate` to
+  Compose, recreating containers whose images and configuration are unchanged.
 - **Tailgate:** enables IPv4/IPv6 forwarding and advertises `10.4.0.0/24`
   (management), `10.4.1.0/24` (trusted), and `10.4.4.0/24` (isolated). Route approval
   in the Tailscale admin console is a manual prerequisite for usable routing.
