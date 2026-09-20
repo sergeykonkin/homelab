@@ -2,7 +2,7 @@ name: personal-yt-downloader
 
 services:
   app:
-    image: ghcr.io/sergeykonkin/personal-yt-downloader:v1.0.0
+    image: ghcr.io/sergeykonkin/personal-yt-downloader:v1.1.0
     container_name: personal-yt-downloader
     restart: unless-stopped
     cap_drop:
@@ -11,6 +11,7 @@ services:
       - no-new-privileges:true
     environment:
       PASSWORD: "${PASSWORD:?set PASSWORD}"
+      API_TOKEN: "${API_TOKEN:-}"
     entrypoint:
       - /bin/sh
       - -ec
@@ -42,7 +43,7 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      TUNNEL_TOKEN: "${TUNNEL_TOKEN:?set TUNNEL_TOKEN}"
+      TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN}"
     command:
       - tunnel
       - --metrics

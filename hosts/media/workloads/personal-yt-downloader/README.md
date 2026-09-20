@@ -14,12 +14,18 @@ The Cloudflare sidecar serves its metrics endpoint on loopback port 2000. Its
 container healthcheck uses the endpoint's `/ready` state, which requires an
 active Cloudflare Tunnel connection.
 
+`API_TOKEN` optionally enables `Authorization: Bearer <token>` authentication
+for direct API requests (curl, iOS Shortcuts) against the `/api/jobs*`
+endpoints. Blank disables bearer auth; changes take effect on container
+restart. The token carries full API power (submit, delete, share links), so it
+is a long random string.
+
 Run all commands below from the repository root. To configure credentials,
 create the ignored `.env` file and encrypt it:
 
 ```sh
 cp hosts/media/workloads/personal-yt-downloader/.env.example hosts/media/workloads/personal-yt-downloader/.env
-# Set PASSWORD and TUNNEL_TOKEN in hosts/media/workloads/personal-yt-downloader/.env.
+# Set PASSWORD and CLOUDFLARE_TUNNEL_TOKEN; optionally set API_TOKEN in hosts/media/workloads/personal-yt-downloader/.env.
 make encrypt-secrets
 ```
 
