@@ -6,11 +6,11 @@ router_settings:
     claude-fable-5-1: zai-org/GLM-5.3
     claude-sonnet-5: zai-org/GLM-5.3
   fallbacks:
-    - zai-org/GLM-5.3: &claude_fallbacks
+    - zai-org/GLM-5.3: &default_fallbacks
         - moonshotai/Kimi-K2.7-Code
         - deepseek-ai/DeepSeek-V4-Pro-0813
-    - claude-haiku-4-5-20251001: *claude_fallbacks
-    - claude-sonnet-5-5: *claude_fallbacks
-    - claude-opus-5-5: *claude_fallbacks
-    - claude-fable-5-1: *claude_fallbacks
-    - claude-sonnet-5: *claude_fallbacks
+    - claude-haiku-4-5-20251001: *default_fallbacks
+    - claude-sonnet-5-5: *default_fallbacks
+    - claude-opus-5-5: *default_fallbacks
+    - claude-fable-5-1: *default_fallbacks
+    - claude-sonnet-5: *default_fallbacks
