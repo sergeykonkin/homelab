@@ -131,7 +131,11 @@ def model_definition(model):
     pricing = model.get("pricing", {})
     if not isinstance(pricing, dict):
         raise SyncError("Catalog contains invalid pricing metadata")
-    rates = {name: nonnegative_number(value) for name, value in pricing.items()}
+    rates = {
+        name: nonnegative_number(value)
+        for name, value in pricing.items()
+        if value is not None
+    }
     limits = model.get("per_request_limits")
     if limits is not None:
         if not isinstance(limits, dict):

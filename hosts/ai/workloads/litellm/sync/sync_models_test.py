@@ -19,7 +19,10 @@ def source_model(model_id="vendor/chat", modality="text->text"):
         "created": 123,
         "context_length": 8192,
         "architecture": {"modality": modality, "tokenizer": "Example", "instruct_type": None},
-        "pricing": {"prompt": "0.000001", "completion": "0.000002", "request": "0"},
+        "pricing": {
+            "prompt": "0.000001", "completion": "0.000002", "request": "0",
+            "input_cache_read": None,
+        },
         "per_request_limits": {"prompt_tokens": 4096},
         "supported_features": ["tool_calling"],
         "supported_sampling_parameters": ["temperature", "top_p"],
@@ -88,6 +91,27 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(info["input_cost_per_token"], 0.0)
         self.assertEqual(info["output_cost_per_token"], 0.0)
 
+    def test_null_prices_are_preserved_without_invented_costs(self):
+        cases = (
+            ({"prompt": "0.000001", "completion": "0.000002", "input_cache_read": None},
+             {"input_cost_per_token": 0.000001, "output_cost_per_token": 0.000002}),
+            ({"prompt": None, "completion": "0", "input_cache_read": None},
+             {"output_cost_per_token": 0.0}),
+            ({"prompt": "0", "completion": None}, {"input_cost_per_token": 0.0}),
+            ({"prompt": None, "completion": None}, {}),
+        )
+        for pricing, costs in cases:
+            with self.subTest(pricing=pricing):
+                record = source_model()
+                record["pricing"] = pricing
+                info = sync.model_definition(record)["model_info"]
+                self.assertEqual(info["tokenfactory"]["pricing"], pricing)
+                for field in ("input_cost_per_token", "output_cost_per_token"):
+                    if field in costs:
+                        self.assertEqual(info[field], costs[field])
+                    else:
+                        self.assertNotIn(field, info)
+
     def test_invalid_catalogs(self):
         records = [None, {}, {"id": " "}, {"id": 1}]
         for field, value in (
@@ -109,11 +133,12 @@ class CatalogTests(unittest.TestCase):
                 sync.catalog_definitions(response)
 
     def test_invalid_prices(self):
-        for price in ("NaN", "Infinity", "-Infinity", "-1", "bad", None, True, {}, "1e9999"):
-            record = source_model()
-            record["pricing"]["prompt"] = price
-            with self.subTest(price=price), self.assertRaises(sync.SyncError):
-                sync.model_definition(record)
+        for field in ("prompt", "completion", "input_cache_read"):
+            for price in ("NaN", "Infinity", "-Infinity", "-1", "bad", True, {}, "1e9999"):
+                record = source_model()
+                record["pricing"][field] = price
+                with self.subTest(field=field, price=price), self.assertRaises(sync.SyncError):
+                    sync.model_definition(record)
 
 
 class ReconciliationTests(unittest.TestCase):

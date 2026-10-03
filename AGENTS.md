@@ -184,6 +184,8 @@ Finish with `git diff --check` and review the changed files.
   names are exact Token Factory IDs; routing uses `nebius/<id>` with the explicit
   Token Factory API base and an `os.environ/NEBIUS_API_KEY` credential reference.
   Source pricing and capabilities are preserved under `model_info.tokenfactory`.
+  Preserve null prices as unavailable metadata; map only non-null prices to
+  numeric costs and reject invalid, negative, or non-finite prices.
   Recognized rates, context lengths, modes, and vision support use LiteLLM fields.
   Unknown modalities are retained without inferred capabilities.
   Model updates use `PATCH /model/{id}/update` to persist routing parameters
