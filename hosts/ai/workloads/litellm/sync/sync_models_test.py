@@ -6,6 +6,7 @@ import json
 import threading
 import unittest
 import urllib.error
+import urllib.parse
 from unittest.mock import Mock, patch
 
 import sync_models as sync
@@ -34,6 +35,14 @@ def database_model(model_id, name="vendor/chat", db_model=True):
         "model_name": name,
         "litellm_params": {"model": "other/provider", "api_key": "masked"},
         "model_info": {"id": model_id, "db_model": db_model},
+    }
+
+
+def model_page(records, page=1, total_count=None):
+    count = len(records) if total_count is None else total_count
+    return {
+        "data": records, "total_count": count, "current_page": page,
+        "total_pages": (count + 99) // 100, "size": 100,
     }
 
 
@@ -146,7 +155,7 @@ class ReconciliationTests(unittest.TestCase):
         source = Mock()
         source.request.return_value = {"data": records if records is not None else [source_model()]}
         target = Mock()
-        target.request.return_value = {"data": existing or []}
+        target.request.return_value = model_page(existing or [])
         return source, target
 
     def test_upserts_before_pruning_entire_database(self):
@@ -159,7 +168,7 @@ class ReconciliationTests(unittest.TestCase):
         source.request.assert_called_once_with("GET", "/models?verbose=true")
         calls = [call.args for call in target.request.call_args_list]
         self.assertEqual([call[1] for call in calls], [
-            "/model/info", "/model/a/update", "/model/new", "/model/delete", "/model/delete",
+            "/v2/model/info?page=1&size=100", "/model/a/update", "/model/new", "/model/delete", "/model/delete",
         ])
         update = calls[1][2]
         self.assertEqual(calls[1][0], "PATCH")
@@ -180,23 +189,67 @@ class ReconciliationTests(unittest.TestCase):
                 sync.sync_once(source, target)
             target.request.assert_not_called()
 
+    def test_empty_database_creates_models(self):
+        source, target = self.clients()
+        self.assertEqual(sync.sync_once(source, target),
+                         {"created": 1, "updated": 0, "deleted": 0})
+        self.assertEqual([call.args[1] for call in target.request.call_args_list],
+                         ["/v2/model/info?page=1&size=100", "/model/new"])
+
+    def test_reads_every_page_before_writing_and_pruning(self):
+        rows = [database_model(str(index), f"foreign/{index}") for index in range(101)]
+        source, target = self.clients()
+        def request(method, path, payload=None):
+            if method == "GET":
+                page = int(urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)["page"][0])
+                return model_page(rows[(page - 1) * 100:page * 100], page, len(rows))
+        target.request.side_effect = request
+        counts = sync.sync_once(source, target)
+        self.assertEqual(counts, {"created": 1, "updated": 0, "deleted": 101})
+        self.assertEqual([call.args[1] for call in target.request.call_args_list[:3]],
+                         ["/v2/model/info?page=1&size=100",
+                          "/v2/model/info?page=2&size=100", "/model/new"])
+        self.assertEqual(target.request.call_args.args[2], {"id": "100"})
+
+    def test_invalid_pagination_performs_no_writes(self):
+        for changes in (
+            {"total_count": True}, {"total_count": -1}, {"total_pages": "1"},
+            {"current_page": 2}, {"size": 50}, {"total_pages": 2},
+            {"total_count": 2},
+        ):
+            source, target = self.clients()
+            target.request.return_value = {**model_page([database_model("a")]), **changes}
+            with self.subTest(changes=changes), self.assertRaises(sync.SyncError):
+                sync.sync_once(source, target)
+            target.request.assert_called_once_with("GET", "/v2/model/info?page=1&size=100")
+
+    def test_failed_or_changed_second_page_performs_no_writes(self):
+        first = model_page([database_model(str(index)) for index in range(100)], 1, 101)
+        for second in (sync.SyncError("HTTP transport failed"),
+                       model_page([database_model("100")], 2, 102)):
+            source, target = self.clients()
+            target.request.side_effect = [first, second]
+            with self.subTest(second=type(second).__name__), self.assertRaises(sync.SyncError):
+                sync.sync_once(source, target)
+            self.assertEqual([call.args[0] for call in target.request.call_args_list], ["GET", "GET"])
+
     def test_invalid_database_response_performs_no_writes(self):
         for response in (
-            {}, {"data": None}, {"data": [None]}, {"data": [{"model_info": {}}]},
-            {"data": [database_model("a", db_model="true")]},
-            {"data": [database_model("same"), database_model("same")]},
+            {}, {"data": None}, model_page([None]), model_page([{"model_info": {}}]),
+            model_page([database_model("a", db_model="true")]),
+            model_page([database_model("same"), database_model("same")]),
         ):
             source, target = self.clients()
             target.request.return_value = response
             with self.subTest(response=response), self.assertRaises(sync.SyncError):
                 sync.sync_once(source, target)
-            target.request.assert_called_once_with("GET", "/model/info")
+            target.request.assert_called_once_with("GET", "/v2/model/info?page=1&size=100")
 
     def test_file_owned_entries_are_outside_database_reconciliation(self):
         source, target = self.clients(existing=[database_model("file", "file-owned", False)])
         sync.sync_once(source, target)
         self.assertEqual([call.args[1] for call in target.request.call_args_list],
-                         ["/model/info", "/model/new"])
+                         ["/v2/model/info?page=1&size=100", "/model/new"])
 
     def test_create_and_update_failures_prevent_deletion(self):
         for fail_at in ("/model/new", "/model/keep/update"):
@@ -206,7 +259,7 @@ class ReconciliationTests(unittest.TestCase):
             )
             def request(method, path, payload=None):
                 if method == "GET":
-                    return {"data": [database_model("keep"), database_model("stale", "other/model")]}
+                    return model_page([database_model("keep"), database_model("stale", "other/model")])
                 if path == fail_at:
                     raise sync.SyncError("HTTP transport failed")
             target.request.side_effect = request
@@ -223,7 +276,7 @@ class ReconciliationTests(unittest.TestCase):
         def request(method, path, payload=None):
             nonlocal fail_once
             if method == "GET":
-                return {"data": copy.deepcopy(state)}
+                return model_page(copy.deepcopy(state))
             if path == "/model/new":
                 if payload["model_name"] == "vendor/new" and fail_once:
                     fail_once = False
@@ -300,7 +353,7 @@ class TransportTests(unittest.TestCase):
         client = sync.API("http://example", "master-key")
         self.assertIsNone(client.request("POST", "/model/delete", {"id": "id-1"}))
         with self.assertRaises(sync.SyncError):
-            client.request("GET", "/model/info")
+            client.request("GET", "/v2/model/info?page=1&size=100")
 
     @patch("sync_models.urllib.request.urlopen")
     def test_transport_errors_do_not_expose_payloads_or_credentials(self, open_url):
@@ -312,7 +365,7 @@ class TransportTests(unittest.TestCase):
         for error in errors:
             open_url.side_effect = error
             with self.subTest(error=type(error).__name__), self.assertRaises(sync.SyncError) as raised:
-                sync.API("http://example", "secret-key").request("GET", "/model/info")
+                sync.API("http://example", "secret-key").request("GET", "/v2/model/info?page=1&size=100")
             self.assertNotIn("secret", str(raised.exception))
 
     @patch("sync_models.urllib.request.urlopen")
@@ -320,7 +373,7 @@ class TransportTests(unittest.TestCase):
         for body in (b"secret-body", b"\xff"):
             open_url.return_value = self.response(body)
             with self.subTest(body=body), self.assertRaises(sync.SyncError) as raised:
-                sync.API("http://example", "secret-key").request("GET", "/model/info")
+                sync.API("http://example", "secret-key").request("GET", "/v2/model/info?page=1&size=100")
             self.assertEqual(str(raised.exception), "HTTP response is not valid JSON")
 
 

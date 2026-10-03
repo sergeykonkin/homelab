@@ -17,6 +17,7 @@ from decimal import Decimal, InvalidOperation
 TOKEN_FACTORY_BASE = "https://api.tokenfactory.nebius.com/v1"
 LITELLM_BASE = "http://litellm:4000"
 HTTP_TIMEOUT = 30
+MODEL_PAGE_SIZE = 100
 LOGGER = logging.getLogger(__name__)
 
 
@@ -225,10 +226,41 @@ def database_models(response):
     return {name: sorted(model_ids) for name, model_ids in models.items()}
 
 
+def fetch_database_models(target):
+    """Read and validate every deployment page, including an empty database."""
+    records = []
+    page = 1
+    expected_count = None
+    while True:
+        response = target.request(
+            "GET", f"/v2/model/info?page={page}&size={MODEL_PAGE_SIZE}"
+        )
+        if not isinstance(response, dict) or not isinstance(response.get("data"), list):
+            raise SyncError("LiteLLM model response must contain a data list")
+        for field in ("total_count", "current_page", "total_pages", "size"):
+            if type(response.get(field)) is not int or response[field] < 0:
+                raise SyncError("LiteLLM returned invalid model pagination")
+        count = response["total_count"]
+        pages = (count + MODEL_PAGE_SIZE - 1) // MODEL_PAGE_SIZE
+        if (
+            response["current_page"] != page
+            or response["size"] != MODEL_PAGE_SIZE
+            or response["total_pages"] != pages
+            or (expected_count is not None and count != expected_count)
+            or len(response["data"]) != min(MODEL_PAGE_SIZE, count - len(records))
+        ):
+            raise SyncError("LiteLLM returned inconsistent model pagination")
+        expected_count = count
+        records.extend(response["data"])
+        if page >= pages:
+            return database_models({"data": records})
+        page += 1
+
+
 def sync_once(source, target):
     """Upsert the full catalog, then prune stale and duplicate database models."""
     desired = catalog_definitions(source.request("GET", "/models?verbose=true"))
-    existing = database_models(target.request("GET", "/model/info"))
+    existing = fetch_database_models(target)
     counts = {"created": 0, "updated": 0, "deleted": 0}
     phase = "upsert"
     try:

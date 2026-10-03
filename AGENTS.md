@@ -188,6 +188,8 @@ Finish with `git diff --check` and review the changed files.
   numeric costs and reject invalid, negative, or non-finite prices.
   Recognized rates, context lengths, modes, and vision support use LiteLLM fields.
   Unknown modalities are retained without inferred capabilities.
+  Read every page of `GET /v2/model/info` before writes; this endpoint supports
+  an empty database. Reject malformed or inconsistent pagination before writes.
   Model updates use `PATCH /model/{id}/update` to persist routing parameters
   and model metadata together; creation and deletion use `POST /model/new`
   and `POST /model/delete`.
