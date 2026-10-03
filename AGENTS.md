@@ -168,7 +168,7 @@ Finish with `git diff --check` and review the changed files.
   external `caddy_litellm` network, declared in each workload's `deploy.yml`
   and created by `make deploy` when absent. See
   [`docs/tls-ingress.md`](docs/tls-ingress.md).
-- The Compose template defines LiteLLM (`main-stable`), PostgreSQL 16, and the
+- The Compose template defines LiteLLM (`v1.103.2`), PostgreSQL 16, and the
   `models-sync` sidecar (`python:3.14-slim`).
   Preserve the persistent volume `litellm_postgres_data`, the database dependency
   health check, and LiteLLM's 300-second cold start allowance.
