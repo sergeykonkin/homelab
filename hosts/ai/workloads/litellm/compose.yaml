@@ -8,6 +8,7 @@ services:
     environment:
       DATABASE_URL: "postgresql://llmproxy:${POSTGRES_PASSWORD}@db:5432/litellm"
       STORE_MODEL_IN_DB: "True"
+      STORE_PROMPTS_IN_SPEND_LOGS: "True"
       NEBIUS_API_KEY: "${NEBIUS_API_KEY}"
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
     depends_on:
@@ -24,6 +25,19 @@ services:
     networks:
       - default
       - caddy_litellm
+
+  models-sync:
+    build:
+      context: ./sync
+    container_name: litellm-models-sync
+    restart: unless-stopped
+    environment:
+      NEBIUS_API_KEY: "${NEBIUS_API_KEY}"
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
+      SYNC_INTERVAL: "${SYNC_INTERVAL:-600}"
+    depends_on:
+      litellm:
+        condition: service_healthy
 
   db:
     image: postgres:16

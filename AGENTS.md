@@ -21,7 +21,7 @@ lives in [`docs/tls-ingress.md`](docs/tls-ingress.md).
 | Path | Responsibility |
 | --- | --- |
 | `hosts/tailgate/` | `tailgate.home.arpa`: Tailscale subnet router only |
-| `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL |
+| `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL, Token Factory model sync |
 | `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation and Docker only |
 | `hosts/acme/` | `acme.home.arpa`: Docker host for the ACME-DNS gateway workload |
 | `hosts/<name>/ansible/` | Host-specific Ansible project |
@@ -90,6 +90,10 @@ hosts and exits non-zero.
 Its per-host logic lives in `hosts/<name>/healthz.mk` (included by the root
 Makefile), with shared shell helpers in the root `healthz.mk`
 `HEALTHZ_HELPERS` define.
+For LiteLLM model sync edits, run `python3 -m unittest discover -s
+hosts/ai/workloads/litellm/sync -p '*_test.py' -v`, validate Python syntax, and
+validate Compose with the workload's `.env.example`. Unit tests must use mocks
+for HTTP and timing; do not contact Token Factory or live LiteLLM for validation.
 For ACME-DNS gateway edits, run its Python unit tests, validate the Compose
 configuration with the example runtime values, and use `sh -n` for its host
 scripts.
@@ -164,7 +168,34 @@ Finish with `git diff --check` and review the changed files.
   external `caddy_litellm` network, declared in each workload's `deploy.yml`
   and created by `make deploy` when absent. See
   [`docs/tls-ingress.md`](docs/tls-ingress.md).
-- The Compose template defines LiteLLM (`main-stable`) and PostgreSQL 16.
+- The Compose template defines LiteLLM (`main-stable`), PostgreSQL 16, and the
+  `models-sync` sidecar (`python:3.14-slim`).
   Preserve the persistent volume `litellm_postgres_data`, the database dependency
   health check, and LiteLLM's 300-second cold start allowance.
+- LiteLLM settings use Compose environment variables: `DATABASE_URL`,
+  `LITELLM_MASTER_KEY`, `STORE_MODEL_IN_DB=True`, and
+  `STORE_PROMPTS_IN_SPEND_LOGS=True`. `NEBIUS_API_KEY` authenticates inference
+  and Token Factory catalog requests. Prompts and responses are stored in
+  database spend logs.
+- `sync/sync_models.py` uses only the Python standard library and mirrors every
+  Token Factory model into LiteLLM's database through the master-key-authenticated
+  management API. Token Factory is authoritative for the entire model database,
+  including manually added models and models from other providers. Client-facing
+  names are exact Token Factory IDs; routing uses `nebius/<id>` with the explicit
+  Token Factory API base and an `os.environ/NEBIUS_API_KEY` credential reference.
+  Source pricing and capabilities are preserved under `model_info.tokenfactory`.
+  Recognized rates, context lengths, modes, and vision support use LiteLLM fields.
+  Unknown modalities are retained without inferred capabilities.
+  Model updates use `PATCH /model/{id}/update` to persist routing parameters
+  and model metadata together; creation and deletion use `POST /model/new`
+  and `POST /model/delete`.
+- The sync sidecar starts after LiteLLM is healthy, runs immediately, and waits
+  `SYNC_INTERVAL` seconds (positive integer, default `600`) after each cycle.
+  HTTP requests have 30-second timeouts. The complete source catalog and target
+  model list are validated before writes. Empty or invalid catalogs preserve
+  database models. Creates and updates complete before absent models and
+  duplicates are deleted; failed writes prevent deletion. Partial cycles converge
+  on subsequent attempts. Logs contain cycle outcomes and mutation counts,
+  without credentials or response bodies. `sync/sync_models_test.py` contains
+  pure unit tests.
 - `open-webui` and a shared external Docker network are planned, not implemented.
