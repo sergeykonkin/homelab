@@ -21,7 +21,7 @@ lives in [`docs/tls-ingress.md`](docs/tls-ingress.md).
 | Path | Responsibility |
 | --- | --- |
 | `hosts/tailgate/` | `tailgate.home.arpa`: Tailscale subnet router only |
-| `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL, model updater |
+| `hosts/ai/` | `ai.home.arpa`: Docker, LiteLLM, PostgreSQL |
 | `hosts/media/` | `media.home.arpa`: R6S, SD-to-eMMC OS installation and Docker only |
 | `hosts/acme/` | `acme.home.arpa`: Docker host for the ACME-DNS gateway workload |
 | `hosts/<name>/ansible/` | Host-specific Ansible project |
@@ -90,10 +90,6 @@ hosts and exits non-zero.
 Its per-host logic lives in `hosts/<name>/healthz.mk` (included by the root
 Makefile), with shared shell helpers in the root `healthz.mk`
 `HEALTHZ_HELPERS` define.
-For updater edits, use `bash -n hosts/ai/workloads/litellm/entrypoint.sh` and
-Python syntax validation from the repo root; exercise model parsing/config/hash
-behavior with fixtures and a temporary `CONFIG_DIR`, avoiding live API calls.
-The shell script requires Bash and GNU `date` inside its Linux container.
 For ACME-DNS gateway edits, run its Python unit tests, validate the Compose
 configuration with the example runtime values, and use `sh -n` for its host
 scripts.
@@ -168,27 +164,7 @@ Finish with `git diff --check` and review the changed files.
   external `caddy_litellm` network, declared in each workload's `deploy.yml`
   and created by `make deploy` when absent. See
   [`docs/tls-ingress.md`](docs/tls-ingress.md).
-- The Compose template defines LiteLLM (`main-stable`), PostgreSQL 16, and a
-  Python 3.12 updater image. Preserve persistent volumes `litellm_postgres_data`
-  and `litellm_config`, dependency health checks, and LiteLLM's 300-second cold
-  start allowance.
-- `update_config.py` uses only the Python standard library. It fetches Nebius
-  `models?verbose=1`, filters models that accept text input and produce text
-  output (`text->text` and `text+image->text`; not `text->embedding` or
-  `text->text+image`), writes model names/provider IDs/pricing
-  plus `drop_params: true`, and rejects an empty catalog so a transient empty
-  response cannot wipe the working configuration. It skips unchanged writes by
-  comparing SHA-256 of the generated content against `config.yaml` itself —
-  regenerating the file when it is missing or corrupted despite a matching
-  stored hash — and publishes replacements atomically. `config.yaml` and its
-  hash are generated in the shared volume, not deployed
-  from Git. `entrypoint.sh` creates the directory, updates at startup, then
-  runs daily at 04:20 in the container's timezone. It retries the startup
-  update until a usable configuration exists — an empty config volume would
-  otherwise leave LiteLLM's healthy-updater dependency unmet — and restarts
-  `litellm` on any config change, including the initial build, tracking the
-  applied config hash separately so a failed restart is retried. Preserve this
-  startup ordering.
-- The updater's Docker socket mount is marked `:ro` and permits Docker
-  API mutations (including its restart command); treat it as privileged access.
-  `open-webui` and a shared external Docker network are planned, not implemented.
+- The Compose template defines LiteLLM (`main-stable`) and PostgreSQL 16.
+  Preserve the persistent volume `litellm_postgres_data`, the database dependency
+  health check, and LiteLLM's 300-second cold start allowance.
+- `open-webui` and a shared external Docker network are planned, not implemented.

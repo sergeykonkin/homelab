@@ -5,10 +5,6 @@ services:
     image: docker.litellm.ai/berriai/litellm:main-stable
     container_name: litellm
     restart: unless-stopped
-    volumes:
-      - config:/app/config:ro
-    command:
-      - "--config=/app/config/config.yaml"
     environment:
       DATABASE_URL: "postgresql://llmproxy:${POSTGRES_PASSWORD}@db:5432/litellm"
       STORE_MODEL_IN_DB: "True"
@@ -16,8 +12,6 @@ services:
       LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY}"
     depends_on:
       db:
-        condition: service_healthy
-      models-updater:
         condition: service_healthy
     healthcheck:
       test:
@@ -30,24 +24,6 @@ services:
     networks:
       - default
       - caddy_litellm
-
-  models-updater:
-    build:
-      context: .
-      dockerfile: Dockerfile.models-updater
-    container_name: litellm-models-updater
-    restart: unless-stopped
-    environment:
-      NEBIUS_API_KEY: "${NEBIUS_API_KEY}"
-      CONFIG_DIR: "/app/config"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - config:/app/config
-    healthcheck:
-      test: ["CMD-SHELL", "test -f /app/config/config.yaml"]
-      interval: 2s
-      timeout: 1s
-      retries: 30
 
   db:
     image: postgres:16
@@ -74,5 +50,3 @@ networks:
 volumes:
   postgres_data:
     name: litellm_postgres_data
-  config:
-    name: litellm_config
