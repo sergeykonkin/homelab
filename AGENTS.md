@@ -177,6 +177,14 @@ Finish with `git diff --check` and review the changed files.
   `STORE_PROMPTS_IN_SPEND_LOGS=True`. `NEBIUS_API_KEY` authenticates inference
   and Token Factory catalog requests. Prompts and responses are stored in
   database spend logs.
+- LiteLLM reads static router aliases and ordered fallbacks from `config.yaml`.
+  `deploy.yml` copies it to `/opt/litellm/config.yaml`; Compose mounts that host
+  file read-only and passes `--config /app/config.yaml`. Model deployments remain
+  database-managed. Claude aliases route to `zai-org/GLM-5.3`, with ordered
+  fallbacks to `moonshotai/Kimi-K2.7-Code` and
+  `deepseek-ai/DeepSeek-V4-Pro-0813`. Apply file edits with
+  `make deploy host=ai workload=litellm force_recreate=true` because copying
+  a bind-mounted configuration file does not restart LiteLLM.
 - `sync/sync_models.py` uses only the Python standard library and mirrors every
   Token Factory model into LiteLLM's database through the master-key-authenticated
   management API. Token Factory is authoritative for the entire model database,

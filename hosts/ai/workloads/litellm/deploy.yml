@@ -1,4 +1,5 @@
 ---
-copy_files: []
+copy_files:
+  - config.yaml
 external_networks:
   - caddy_litellm

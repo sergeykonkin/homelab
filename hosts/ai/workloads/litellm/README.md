@@ -22,6 +22,13 @@ database model storage, and prompt/response spend logging. The workload's
 `.env.example` lists the required credentials and `SYNC_INTERVAL` in seconds
 (default `600`).
 
+`config.yaml` maps five Claude IDs (Haiku 4.5, Sonnet 5.5, Opus 5.5, Fable 5.1,
+and Sonnet 5) to `zai-org/GLM-5.3`. Failed requests fall back to
+`moonshotai/Kimi-K2.7-Code`, then `deepseek-ai/DeepSeek-V4-Pro-0813`.
+The deployment copies this file to `/opt/litellm/config.yaml` on the host and
+mounts it read-only. After editing an existing configuration, run
+`make deploy host=ai workload=litellm force_recreate=true` to reload it.
+
 The sidecar reads every model from Nebius Token Factory and mirrors the entire
 LiteLLM model database through its authenticated management API. Client-facing
 names are exact Token Factory IDs. Pricing and capability metadata are stored
