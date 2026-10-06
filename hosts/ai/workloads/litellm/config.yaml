@@ -1,4 +1,6 @@
 router_settings:
+  timeout: 60
+  num_retries: 0
   model_group_alias:
     claude-haiku-4-5-20251001: zai-org/GLM-5.3
     claude-sonnet-5-5: zai-org/GLM-5.3
